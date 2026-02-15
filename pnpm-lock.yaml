@@ -9,12 +9,12 @@ importers:
   .:
     dependencies:
       '@budarin/http-constants':
-        specifier: ^1.0.16
-        version: 1.0.21
+        specifier: ^1.0.22
+        version: 1.0.22
     devDependencies:
       '@budarin/pluggable-serviceworker':
-        specifier: ^1.0.29
-        version: 1.8.1
+        specifier: ^1.9.0
+        version: 1.9.0
       '@types/serviceworker':
         specifier: ^0.0.190
         version: 0.0.190
@@ -27,11 +27,11 @@ importers:
 
 packages:
 
-  '@budarin/http-constants@1.0.21':
-    resolution: {integrity: sha512-sNJFSxI4sJicOHIlzj+/DkW0m8z8FicqwYHwx/hwjMft66NnuGR/d7KHKB2DeE+ItPJQthUYuGU0k9xFcY/vcg==}
+  '@budarin/http-constants@1.0.22':
+    resolution: {integrity: sha512-XZu3JmErHaTTwDPnsGikjwzZ/NHS3DWQNcxmRemhY1jJTr9Va5Arnk4mbE6lVAg1bir1AYyO1zygzQTjiSEtZw==}
 
-  '@budarin/pluggable-serviceworker@1.8.1':
-    resolution: {integrity: sha512-LHLZjd62ZwH1o3Jy34xdQXro1zO9JWBPCJHsXD7f9jgBoClbk3z0clMkN7FBCUMbZMwtp1Hi3mRR0e5Jcz1pMA==}
+  '@budarin/pluggable-serviceworker@1.9.0':
+    resolution: {integrity: sha512-bgwMYSh8FNvGmStIFsZ+kWYXHwdpTlgLJ/Oomvy2ZSi/LYY49Fj0bH7aiIA2GV8pwqGd3xqwMfG+Gg5T5NyMbg==}
 
   '@types/serviceworker@0.0.190':
     resolution: {integrity: sha512-bzItk9mz6qntVZ2AI/foSu6OADylZEYqcWZxxYhm7vLD3e0bG4iPJHzltAOL+V8OBb7QbZkEofIC6t1LFEqMsA==}
@@ -46,11 +46,11 @@ packages:
 
 snapshots:
 
-  '@budarin/http-constants@1.0.21': {}
+  '@budarin/http-constants@1.0.22': {}
 
-  '@budarin/pluggable-serviceworker@1.8.1':
+  '@budarin/pluggable-serviceworker@1.9.0':
     dependencies:
-      '@budarin/http-constants': 1.0.21
+      '@budarin/http-constants': 1.0.22
 
   '@types/serviceworker@0.0.190': {}
 
