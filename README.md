@@ -32,8 +32,8 @@ import {
 
 configureOpfs({ folderName: 'my-opfs-cache' }); // опционально; по умолчанию 'opfs-serve-range'
 
-initServiceWorker({
-    plugins: [
+initServiceWorker(
+    [
         opfsServeRange({
             order: -15,
             include: ['*.mp4', '*.webm', '*.pmtiles'],
@@ -46,7 +46,8 @@ initServiceWorker({
             urls: ['/media/intro.mp4'], // или () => fetch('/manifest.json').then(r => r.json()).then(m => m.opfsUrls)
         }),
     ],
-});
+    { version: '1.0.0' }
+);
 ```
 
 Порядок: сначала **opfsServeRange** (попытка отдать из OPFS), затем **opfsCacheOnFetch** (если не в OPFS — fetch и запись в OPFS), при установке — **opfsPrecache** (предкеш по списку).

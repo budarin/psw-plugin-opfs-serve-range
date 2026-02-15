@@ -18,7 +18,7 @@
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "peerDependencies": {
-        "@budarin/pluggable-serviceworker": "^1.0.0"
+        "@budarin/pluggable-serviceworker": "^1.9.0"
     },
     "dependencies": {
         "@budarin/http-constants": "^1.0.22"
