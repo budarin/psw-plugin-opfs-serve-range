@@ -1,0 +1,33 @@
+{
+    "compilerOptions": {
+        "rootDir": "./src",
+        "outDir": "./dist",
+
+        "module": "preserve",
+        "moduleResolution": "bundler",
+
+        "target": "esnext",
+        "lib": ["esnext"],
+        "types": ["serviceworker", "web"],
+
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitReturns": false,
+        "noImplicitOverride": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "strict": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "noUncheckedSideEffectImports": true,
+        "moduleDetection": "force",
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "declaration": true,
+        "noEmit": false,
+        "removeComments": true
+    },
+    "include": ["src/**/*"]
+}

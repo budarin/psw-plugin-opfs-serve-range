@@ -1,0 +1,42 @@
+{
+    "name": "@budarin/psw-plugin-opfs-serve-range",
+    "version": "0.1.0",
+    "description": "Service Worker plugin: serve HTTP Range requests from OPFS files",
+    "keywords": [
+        "service-worker",
+        "opfs",
+        "range-requests",
+        "pluggable-serviceworker"
+    ],
+    "license": "MIT",
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md"
+    ],
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "peerDependencies": {
+        "@budarin/pluggable-serviceworker": "^1.0.0"
+    },
+    "dependencies": {
+        "@budarin/http-constants": "^1.0.16"
+    },
+    "devDependencies": {
+        "@budarin/pluggable-serviceworker": "^1.0.29",
+        "@types/serviceworker": "^0.0.190",
+        "@types/web": "^0.0.335",
+        "typescript": "^5.9.3"
+    },
+    "scripts": {
+        "build": "tsc",
+        "type-check": "tsc -b -noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "clear-caches": "sh scripts/clear-caches.sh",
+        "pnpm-install": "pnpm install",
+        "upgrade-deps": "sh scripts/upgrade-deps.sh",
+        "publish-package": "pnpm build && pnpm publish --access=public"
+    }
+}
