@@ -13,14 +13,14 @@ importers:
         version: 1.0.22
     devDependencies:
       '@budarin/pluggable-serviceworker':
-        specifier: ^1.10.2
-        version: 1.10.2
+        specifier: ^1.10.4
+        version: 1.10.4
       '@types/serviceworker':
-        specifier: ^0.0.190
-        version: 0.0.190
+        specifier: ^0.0.191
+        version: 0.0.191
       '@types/web':
-        specifier: ^0.0.335
-        version: 0.0.335
+        specifier: ^0.0.336
+        version: 0.0.336
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -30,14 +30,14 @@ packages:
   '@budarin/http-constants@1.0.22':
     resolution: {integrity: sha512-XZu3JmErHaTTwDPnsGikjwzZ/NHS3DWQNcxmRemhY1jJTr9Va5Arnk4mbE6lVAg1bir1AYyO1zygzQTjiSEtZw==}
 
-  '@budarin/pluggable-serviceworker@1.10.2':
-    resolution: {integrity: sha512-XnXoLe7wLwEzNOEHS7j9JosY/gPGaLxmYCdqOdYORrdfX2NM+ehGJaxKYXkI2e2ICmxkd0YZde3NWXk6SLM/rA==}
+  '@budarin/pluggable-serviceworker@1.10.4':
+    resolution: {integrity: sha512-XHKXgyiGpaQ0GsIetpPg8oyW9STbBBXp1syAFE2khUYkabYB91fS0G9a2GMOJQ7cwyoLvKWNWgppCpckaz9iKQ==}
 
-  '@types/serviceworker@0.0.190':
-    resolution: {integrity: sha512-bzItk9mz6qntVZ2AI/foSu6OADylZEYqcWZxxYhm7vLD3e0bG4iPJHzltAOL+V8OBb7QbZkEofIC6t1LFEqMsA==}
+  '@types/serviceworker@0.0.191':
+    resolution: {integrity: sha512-DFQspa5cuobxgUuoeGGYBW45oOvPvgYp68Yk24mLdMGGGcgoH0nj5TawBZdRpIqPV8kkZodcQrqradnwGhRVNQ==}
 
-  '@types/web@0.0.335':
-    resolution: {integrity: sha512-MdqOg7t1MaQdaQoGuffSdxOx8icrisFBAuI8/DrdCco4TmRVgcwPJdS9zzbQ6rYocRQNW9yekQtnurTDWksOBg==}
+  '@types/web@0.0.336':
+    resolution: {integrity: sha512-BF63oBTS3D5d1XEKR2fou32PlxSqiaYZxTCchI/eeS/q6f51mKQdcVvFJcLUPsiO8G6KyEPlSYVvhQfa1KVeSw==}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -48,12 +48,12 @@ snapshots:
 
   '@budarin/http-constants@1.0.22': {}
 
-  '@budarin/pluggable-serviceworker@1.10.2':
+  '@budarin/pluggable-serviceworker@1.10.4':
     dependencies:
       '@budarin/http-constants': 1.0.22
 
-  '@types/serviceworker@0.0.190': {}
+  '@types/serviceworker@0.0.191': {}
 
-  '@types/web@0.0.335': {}
+  '@types/web@0.0.336': {}
 
   typescript@5.9.3: {}
