@@ -26,6 +26,7 @@ export {
     GIGABYTE,
     type OpfsMetadata,
 } from './opfsFormat.js';
+
 export {
     getOpfsDir,
     clearOpfsCache,
@@ -34,6 +35,7 @@ export {
     getMaxCacheFraction,
     type OpfsConfigOptions,
 } from './opfsUtil.js';
+
 export { isBlacklisted, addToBlacklist, getStorageEstimate, getCacheLimit } from './opfsLru.js';
 export type { StorageEstimate, CacheFileEntry, EnsureSpaceResult } from './opfsLru.js';
 export {
