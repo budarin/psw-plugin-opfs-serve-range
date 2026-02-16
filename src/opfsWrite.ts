@@ -57,13 +57,14 @@ export async function writeToOpfs(
 
 /**
  * Собирает метаданные для OPFS из заголовков HTTP-ответа.
+ * Если Content-Length отсутствует или невалиден, возвращает size: 0 — при записи через writeToOpfs
+ * фактический размер подставится из подсчитанного тела (bodySize).
  */
 export function metadataFromResponse(response: Response): OpfsMetadata {
     const contentLength = response.headers.get('Content-Length');
-    const size = contentLength ? parseInt(contentLength, 10) : 0;
-    if (size <= 0 || !Number.isInteger(size)) {
-        throw new Error('Content-Length missing or invalid');
-    }
+    const parsed = contentLength ? parseInt(contentLength, 10) : 0;
+    const size =
+        parsed > 0 && Number.isInteger(parsed) ? parsed : 0;
     const type =
         response.headers.get('Content-Type') ?? 'application/octet-stream';
     const etag = response.headers.get('ETag') ?? undefined;

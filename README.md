@@ -136,7 +136,7 @@ const metadata = metadataFromResponse(response);
 await writeToOpfs(dir, key, response.body, metadata);
 ```
 
-Ответ должен содержать заголовок `Content-Length`; футер writeToOpfs дописывает сам.
+Ответ может быть без заголовка `Content-Length` — при записи полного тела размер определяется автоматически.
 
 ## Очистка кеша
 
@@ -160,7 +160,6 @@ await clearOpfsCache();
 ## Требования
 
 - Браузер с поддержкой OPFS (Chrome 108+, Edge 108+, Firefox 111+, Safari 16.4+) и secure context (HTTPS).
-- Для записи в кэш (opfsPrecache, opfsRangeFromNetworkAndCache, opfsBackgroundFetch) ответ сервера должен содержать заголовок `Content-Length`; ответы только с chunked без Content-Length кэшировать нельзя.
 
 ## Лицензия
 
