@@ -5,6 +5,7 @@
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 import { getOpfsDir, urlToOpfsKey } from './index.js';
+import { isOpfsAvailable } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 
 export interface OpfsPrecacheOptions {
@@ -26,7 +27,12 @@ export interface OpfsPrecacheOptions {
  * Плагин: при install запрашивает каждый URL из списка и записывает ответ в OPFS
  * (ключ = urlToOpfsKey(url), формат с футером). Не блокирует активацию SW — запись идёт в фоне.
  */
-export function opfsPrecache(options: OpfsPrecacheOptions): Plugin {
+export function opfsPrecache(
+    options: OpfsPrecacheOptions
+): Plugin | undefined {
+    if (!isOpfsAvailable()) {
+        return undefined;
+    }
     const { urls, order = 0, enableLogging = false } = options;
 
     return {

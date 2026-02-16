@@ -6,16 +6,8 @@
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 
-import {
-    HEADER_RANGE,
-    HEADER_CONTENT_TYPE,
-    HEADER_CONTENT_RANGE,
-    HEADER_CONTENT_LENGTH,
-    HEADER_ETAG,
-    HEADER_LAST_MODIFIED,
-} from '@budarin/http-constants/headers';
+import { HEADER_RANGE } from '@budarin/http-constants/headers';
 
-import { HTTP_STATUS_PARTIAL_CONTENT } from '@budarin/http-constants/statuses';
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
 import {
@@ -23,22 +15,17 @@ import {
     MAX_META_JSON_BYTES,
     type OpfsMetadata,
 } from './opfsFormat.js';
-import { getOpfsDir, shouldProcessFile } from './opfsUtil.js';
+import { getOpfsDir, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { parseRangeHeader, build206Response } from './opfsRangeUtil.js';
 
 export {
     OPFS_META_FOOTER_LENGTH,
     OPFS_FOLDER_NAME,
     type OpfsMetadata,
 } from './opfsFormat.js';
-export { getOpfsDir, clearOpfsCache, configureOpfs } from './opfsUtil.js';
+export { getOpfsDir, clearOpfsCache, configureOpfs, isOpfsAvailable } from './opfsUtil.js';
 
-const HEADER_ACCEPT_RANGES = 'Accept-Ranges';
 const HEADER_IF_RANGE = 'If-Range';
-
-interface Range {
-    start: number;
-    end: number;
-}
 
 export interface OpfsServeRangeOptions {
     /**
@@ -84,43 +71,6 @@ export async function urlToOpfsKey(url: string): Promise<string> {
     return key;
 }
 
-function parseRangeHeader(rangeHeader: string, fullSize: number): Range {
-    const trimmed = rangeHeader.trim();
-
-    const suffixMatch = /^bytes=-(\d+)$/.exec(trimmed);
-    if (suffixMatch) {
-        const suffixLength = parseInt(suffixMatch[1]!, 10);
-        if (isNaN(suffixLength) || suffixLength <= 0) {
-            throw new Error('Invalid suffix range value');
-        }
-        const start = Math.max(0, fullSize - suffixLength);
-        const end = fullSize - 1;
-        return { start, end };
-    }
-
-    const rangeMatch = /^bytes=(\d+)-(\d*)$/.exec(trimmed);
-    if (!rangeMatch) {
-        throw new Error('Invalid or unsupported range header format');
-    }
-
-    const start = parseInt(rangeMatch[1]!, 10);
-    const end = rangeMatch[2]
-        ? parseInt(rangeMatch[2], 10)
-        : fullSize - 1;
-
-    if (isNaN(start) || isNaN(end)) {
-        throw new Error('Invalid range values');
-    }
-    if (start < 0 || start >= fullSize) {
-        throw new Error('Range start is out of bounds');
-    }
-    if (end < start || end >= fullSize) {
-        throw new Error('Range end is out of bounds');
-    }
-
-    return { start, end };
-}
-
 function ifRangeMatches(
     ifRangeValue: string,
     meta: { etag?: string; lastModified?: string }
@@ -133,14 +83,15 @@ function ifRangeMatches(
         const ifRangeDate = Date.parse(value);
         if (!Number.isNaN(ifRangeDate)) {
             const storedDate = Date.parse(meta.lastModified);
-            return (
-                !Number.isNaN(storedDate) && ifRangeDate === storedDate
-            );
+            return !Number.isNaN(storedDate) && ifRangeDate === storedDate;
         }
     }
     if (meta.etag) {
         const normalizeEtag = (s: string) =>
-            s.replace(/^\s*W\//i, '').replace(/^"|"$/g, '').trim();
+            s
+                .replace(/^\s*W\//i, '')
+                .replace(/^"|"$/g, '')
+                .trim();
         return normalizeEtag(value) === normalizeEtag(meta.etag);
     }
     return false;
@@ -187,7 +138,10 @@ async function getMetadataFromFileFooter(
  */
 export function opfsServeRange(
     options: OpfsServeRangeOptions = {}
-): Plugin {
+): Plugin | undefined {
+    if (!isOpfsAvailable()) {
+        return undefined;
+    }
     const {
         order = -15,
         enableLogging = false,
@@ -239,7 +193,9 @@ export function opfsServeRange(
                 dir = await getOpfsDir(root, false);
             } catch {
                 if (enableLogging) {
-                    logger.debug(`opfsServeRange: no plugin dir in OPFS for ${url}`);
+                    logger.debug(
+                        `opfsServeRange: no plugin dir in OPFS for ${url}`
+                    );
                 }
                 return;
             }
@@ -258,11 +214,14 @@ export function opfsServeRange(
             const { metadata, bodySize } =
                 await getMetadataFromFileFooter(file);
             const size = metadata?.size ?? bodySize;
-            const type =
-                metadata?.type ?? MIME_APPLICATION_OCTET_STREAM;
+            const type = metadata?.type ?? MIME_APPLICATION_OCTET_STREAM;
 
             const ifRangeHeader = request.headers.get(HEADER_IF_RANGE);
-            if (ifRangeHeader && metadata && !ifRangeMatches(ifRangeHeader, metadata)) {
+            if (
+                ifRangeHeader &&
+                metadata &&
+                !ifRangeMatches(ifRangeHeader, metadata)
+            ) {
                 if (enableLogging) {
                     logger.debug(
                         `opfsServeRange: If-Range mismatch for ${url}, passing through`
@@ -277,26 +236,15 @@ export function opfsServeRange(
                 // Blob.slice(start, end): end exclusive → для [start, end] inclusive используем end + 1
                 const blob = file.slice(range.start, range.end + 1);
 
-                const contentRange = `bytes ${String(range.start)}-${String(range.end)}/${String(size)}`;
-                const headers = new Headers({
-                    [HEADER_CONTENT_RANGE]: contentRange,
-                    [HEADER_CONTENT_LENGTH]: String(blob.size),
-                    [HEADER_CONTENT_TYPE]: type,
-                    [HEADER_ACCEPT_RANGES]: 'bytes',
-                });
-                if (rangeResponseCacheControl) {
-                    headers.set('Cache-Control', rangeResponseCacheControl);
-                }
-                if (metadata?.etag) {
-                    headers.set(HEADER_ETAG, metadata.etag);
-                }
-                if (metadata?.lastModified) {
-                    headers.set(HEADER_LAST_MODIFIED, metadata.lastModified);
-                }
-
-                const response = new Response(blob, {
-                    status: HTTP_STATUS_PARTIAL_CONTENT,
-                    headers,
+                const response = build206Response(blob, range, size, {
+                    type,
+                    ...(metadata?.etag && { etag: metadata.etag }),
+                    ...(metadata?.lastModified && {
+                        lastModified: metadata.lastModified,
+                    }),
+                    ...(rangeResponseCacheControl && {
+                        cacheControl: rangeResponseCacheControl,
+                    }),
                 });
 
                 if (enableLogging) {
@@ -316,8 +264,17 @@ export function opfsServeRange(
     };
 }
 
+export {
+    parseRangeHeader,
+    build206Response,
+    build206ResponseFromStream,
+    createRangeExtractTransform,
+} from './opfsRangeUtil.js';
+export type { RangeSpec, Build206Options } from './opfsRangeUtil.js';
 export { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 export { opfsPrecache } from './opfsPrecache.js';
 export type { OpfsPrecacheOptions } from './opfsPrecache.js';
-export { opfsCacheOnFetch } from './opfsCacheOnFetch.js';
-export type { OpfsCacheOnFetchOptions } from './opfsCacheOnFetch.js';
+export { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
+export type { OpfsRangeFromNetworkAndCacheOptions } from './opfsRangeFromNetworkAndCache.js';
+export { opfsBackgroundFetch } from './opfsBackgroundFetch.js';
+export type { OpfsBackgroundFetchOptions } from './opfsBackgroundFetch.js';

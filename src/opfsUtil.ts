@@ -7,6 +7,18 @@ import { OPFS_FOLDER_NAME } from './opfsFormat.js';
 let opfsConfig: { folderName?: string } = {};
 
 /**
+ * Синхронная проверка доступности OPFS (navigator.storage.getDirectory).
+ * В средах без OPFS фабрики плагинов могут возвращать undefined.
+ */
+export function isOpfsAvailable(): boolean {
+    return (
+        typeof navigator !== 'undefined' &&
+        navigator?.storage != null &&
+        typeof navigator.storage.getDirectory === 'function'
+    );
+}
+
+/**
  * Централизованная настройка OPFS-плагинов. Вызовите один раз до регистрации плагинов.
  * Имя папки используется во всех плагинах и в clearOpfsCache(), если не передано явно.
  */
