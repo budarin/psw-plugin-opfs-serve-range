@@ -4,7 +4,16 @@
 
 import { OPFS_FOLDER_NAME } from './opfsFormat.js';
 
-let opfsConfig: { folderName?: string } = {};
+const DEFAULT_MAX_CACHE_FRACTION = 0.5;
+
+export interface OpfsConfigOptions {
+    /** Имя папки в OPFS для файлов кеша. */
+    folderName?: string;
+    /** Доля квоты origin (0…1), которую может занимать кеш. По умолчанию 0.5. */
+    maxCacheFraction?: number;
+}
+
+let opfsConfig: OpfsConfigOptions = {};
 
 /**
  * Синхронная проверка доступности OPFS (navigator.storage.getDirectory).
@@ -20,14 +29,23 @@ export function isOpfsAvailable(): boolean {
 
 /**
  * Централизованная настройка OPFS-плагинов. Вызовите один раз до регистрации плагинов.
- * Имя папки используется во всех плагинах и в clearOpfsCache(), если не передано явно.
+ * Имя папки и доля квоты используются во всех плагинах и в clearOpfsCache().
  */
-export function configureOpfs(options: { folderName?: string }): void {
+export function configureOpfs(options: OpfsConfigOptions = {}): void {
     opfsConfig = { ...options };
 }
 
 function getResolvedFolderName(): string {
     return opfsConfig.folderName ?? OPFS_FOLDER_NAME;
+}
+
+/** Текущая доля квоты для кеша (для внутреннего использования). */
+export function getMaxCacheFraction(): number {
+    const v = opfsConfig.maxCacheFraction;
+    if (v === undefined || v < 0 || v > 1) {
+        return DEFAULT_MAX_CACHE_FRACTION;
+    }
+    return v;
 }
 
 export function matchesGlob(url: string, pattern: string): boolean {

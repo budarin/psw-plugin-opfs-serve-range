@@ -5,6 +5,7 @@
  */
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
+import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
 import { getOpfsDir, urlToOpfsKey } from './index.js';
 import {
@@ -15,6 +16,8 @@ import {
 } from './opfsRangeUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { isBlacklisted } from './opfsLru.js';
+import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
 
 /** URL, по которым уже идёт фоновая полная загрузка в OPFS. */
 const loadingUrls = new Set<string>();
@@ -47,6 +50,14 @@ async function backgroundFullFetchToOpfs(
     enableLogging: boolean
 ): Promise<void> {
     try {
+        if (isBlacklisted(url)) {
+            if (enableLogging) {
+                logger.debug(
+                    `opfsRangeFromNetworkAndCache: skip ${url} (blacklisted, quota exceeded)`
+                );
+            }
+            return;
+        }
         const fullRequest = new Request(url, { method: 'GET' });
         const response = await fetch(fullRequest);
         if (!response.ok || !response.body) {
@@ -69,7 +80,10 @@ async function backgroundFullFetchToOpfs(
         const key = await urlToOpfsKey(url);
         const root = await navigator.storage.getDirectory();
         const dir = await getOpfsDir(root, true);
-        await writeToOpfs(dir, key, response.body, metadata);
+        await writeToOpfs(dir, key, response.body, metadata, {
+            url,
+            ...(metadata.size > 0 && { knownSize: metadata.size }),
+        });
         if (enableLogging) {
             logger.debug(
                 `opfsRangeFromNetworkAndCache: background cached ${url} -> ${key} (${metadata.size} bytes)`
@@ -130,12 +144,23 @@ export function opfsRangeFromNetworkAndCache(
                     if (response.status !== 200) {
                         return response;
                     }
+                    if (isBlacklisted(url)) {
+                        notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
+                        return new Response(response.body, {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: response.headers,
+                        });
+                    }
                     const metadata = metadataFromResponse(response);
                     const key = await urlToOpfsKey(url);
                     const root = await navigator.storage.getDirectory();
                     const dir = await getOpfsDir(root, true);
                     const [branch1, branch2] = response.body.tee();
-                    writeToOpfs(dir, key, branch2, metadata).catch((err) => {
+                    writeToOpfs(dir, key, branch2, metadata, {
+                        url,
+                        ...(metadata.size > 0 && { knownSize: metadata.size }),
+                    }).catch((err) => {
                         if (enableLogging) {
                             logger.error(
                                 `opfsRangeFromNetworkAndCache: write failed ${url}`,
@@ -215,16 +240,17 @@ export function opfsRangeFromNetworkAndCache(
                         const root = await navigator.storage.getDirectory();
                         const dir = await getOpfsDir(root, true);
                         const [branch1, branch2] = response.body.tee();
-                        writeToOpfs(dir, key, branch2, metadata).catch(
-                            (err) => {
+                        writeToOpfs(dir, key, branch2, metadata, {
+                            url,
+                            knownSize: fullSize,
+                        }).catch((err) => {
                                 if (enableLogging) {
                                     logger.error(
                                         `opfsRangeFromNetworkAndCache: write failed ${url}`,
                                         err
                                     );
                                 }
-                            }
-                        );
+                            });
                         const rangeStream = branch1.pipeThrough(
                             createRangeExtractTransform(range)
                         );

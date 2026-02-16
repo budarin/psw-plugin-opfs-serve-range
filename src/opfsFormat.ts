@@ -11,10 +11,19 @@ export const OPFS_META_FOOTER_LENGTH = 4;
 /** Максимальная длина JSON метаданных в байтах (защита от битых данных). */
 export const MAX_META_JSON_BYTES = 2048;
 
+/** 1 KiB в байтах. Для конфигурации и лимитов. */
+export const KILOBYTE = 1024;
+/** 1 MiB в байтах. */
+export const MEGABYTE = 1024 * 1024;
+/** 1 GiB в байтах. */
+export const GIGABYTE = 1024 * 1024 * 1024;
+
 /** Метаданные ресурса (JSON в конце файла). */
 export interface OpfsMetadata {
     size: number;
     type?: string;
     etag?: string;
     lastModified?: string;
+    /** Время последнего доступа (timestamp), для LRU. */
+    lastAccessed?: number;
 }

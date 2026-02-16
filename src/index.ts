@@ -21,9 +21,31 @@ import { parseRangeHeader, build206Response } from './opfsRangeUtil.js';
 export {
     OPFS_META_FOOTER_LENGTH,
     OPFS_FOLDER_NAME,
+    KILOBYTE,
+    MEGABYTE,
+    GIGABYTE,
     type OpfsMetadata,
 } from './opfsFormat.js';
-export { getOpfsDir, clearOpfsCache, configureOpfs, isOpfsAvailable } from './opfsUtil.js';
+export {
+    getOpfsDir,
+    clearOpfsCache,
+    configureOpfs,
+    isOpfsAvailable,
+    getMaxCacheFraction,
+    type OpfsConfigOptions,
+} from './opfsUtil.js';
+export { isBlacklisted, addToBlacklist, getStorageEstimate, getCacheLimit } from './opfsLru.js';
+export type { StorageEstimate, CacheFileEntry, EnsureSpaceResult } from './opfsLru.js';
+export {
+    OPFS_MSG_QUOTA_EXCEEDED,
+    OPFS_MSG_WRITE_SKIPPED_SIZE,
+    OPFS_MSG_CACHE_LIMIT_REACHED,
+    OPFS_MSG_EVICTION_COMPLETED,
+    OPFS_MSG_WRITE_FAILED,
+    OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+} from './opfsMessages.js';
+export type { OpfsMessageType } from './opfsMessages.js';
+export type { WriteToOpfsOptions } from './opfsWrite.js';
 
 const HEADER_IF_RANGE = 'If-Range';
 
@@ -129,6 +151,36 @@ async function getMetadataFromFileFooter(
         return { metadata, bodySize };
     } catch {
         return { metadata: undefined, bodySize: size };
+    }
+}
+
+/**
+ * Обновляет lastAccessed в футере файла (в фоне, параллельно с отдачей ответа).
+ */
+async function updateLastAccessedInBackground(
+    handle: FileSystemFileHandle,
+    metadata: OpfsMetadata,
+    bodySize: number
+): Promise<void> {
+    try {
+        const meta: OpfsMetadata = { ...metadata, lastAccessed: Date.now() };
+        const metaJson = JSON.stringify(meta);
+        const metaBytes = new TextEncoder().encode(metaJson);
+        if (metaBytes.length > MAX_META_JSON_BYTES) {
+            return;
+        }
+        const lengthAb = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
+        new DataView(lengthAb).setUint32(0, metaBytes.length, true);
+        const writable = await handle.createWritable();
+        await writable.seek(bodySize);
+        await writable.write(
+            metaBytes as Parameters<FileSystemWritableFileStream['write']>[0]
+        );
+        await writable.write(lengthAb);
+        await writable.truncate(bodySize + metaBytes.length + OPFS_META_FOOTER_LENGTH);
+        await writable.close();
+    } catch {
+        // игнорируем ошибки фонового обновления
     }
 }
 
@@ -246,6 +298,16 @@ export function opfsServeRange(
                         cacheControl: rangeResponseCacheControl,
                     }),
                 });
+
+                if (metadata && event.waitUntil) {
+                    event.waitUntil(
+                        updateLastAccessedInBackground(
+                            fileHandle,
+                            metadata,
+                            bodySize
+                        )
+                    );
+                }
 
                 if (enableLogging) {
                     logger.debug(

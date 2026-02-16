@@ -3,26 +3,76 @@
  * Один файл: [тело][4 байта длина JSON (uint32 LE)][JSON мета].
  */
 
+import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
+
 import {
     OPFS_META_FOOTER_LENGTH,
+    MEGABYTE,
     type OpfsMetadata,
 } from './opfsFormat.js';
+import {
+    ensureSpaceForWrite,
+    listCacheFilesWithMeta,
+    getTotalCacheSize,
+    computeEvictionSet,
+    evictFiles,
+    getCacheLimit,
+    getStorageEstimate,
+    addToBlacklist,
+} from './opfsLru.js';
+import {
+    OPFS_MSG_WRITE_SKIPPED_SIZE,
+    OPFS_MSG_QUOTA_EXCEEDED,
+    OPFS_MSG_EVICTION_COMPLETED,
+    OPFS_MSG_WRITE_FAILED,
+} from './opfsMessages.js';
+
+export interface WriteToOpfsOptions {
+    /** URL ресурса — для оповещений и чёрного списка при потоке без размера. */
+    url?: string;
+    /** Известный размер тела (Content-Length). Если задан, перед записью проверяется лимит и при необходимости выполняется LRU-эвикция. */
+    knownSize?: number;
+}
 
 /**
  * Записывает в OPFS файл по ключу: тело (потоком), затем футер с метаданными.
  * Метаданные должны содержать size (размер тела в байтах); при записи футера используется он.
+ * При knownSize перед записью выполняется проверка лимита и при необходимости эвикция по LRU.
+ * При ошибке QuotaExceeded частичный файл удаляется; при bytesWritten >= totalCacheSize URL добавляется в чёрный список.
  *
- * @param dir — папка плагина в OPFS (getOpfsDir(root, true)); все файлы плагина лежат в ней
+ * @param dir — папка плагина в OPFS (getOpfsDir(root, true))
  * @param key — ключ файла (например, из urlToOpfsKey(url))
  * @param bodyStream — поток тела ресурса
  * @param metadata — size обязательно; type, etag, lastModified — по желанию
+ * @param options — url и/или knownSize для лимитов и оповещений
  */
 export async function writeToOpfs(
     dir: FileSystemDirectoryHandle,
     key: string,
     bodyStream: ReadableStream<Uint8Array>,
-    metadata: OpfsMetadata
+    metadata: OpfsMetadata,
+    options: WriteToOpfsOptions = {}
 ): Promise<void> {
+    const { url, knownSize } = options;
+
+    if (knownSize !== undefined && knownSize > 0) {
+        const result = await ensureSpaceForWrite(dir, knownSize, {
+            onEvicted(keys) {
+                if (keys.length > 0) {
+                    notifyClients(OPFS_MSG_EVICTION_COMPLETED, { count: keys.length });
+                }
+            },
+        });
+        if (!result.ok) {
+            notifyClients(OPFS_MSG_WRITE_SKIPPED_SIZE, {
+                url,
+                size: knownSize,
+                reason: result.reason,
+            });
+            throw new Error(result.reason);
+        }
+    }
+
     const handle = await dir.getFileHandle(key, { create: true });
     const writable = await handle.createWritable();
 
@@ -31,13 +81,16 @@ export async function writeToOpfs(
     const wrapper = new WritableStream<Uint8Array>({
         write(chunk) {
             bodySize += chunk.byteLength;
-            // FileSystemWriteChunkType в типах требует ArrayBufferView<ArrayBuffer>, поток даёт Uint8Array<ArrayBufferLike>
             return writable.write(
                 chunk as Parameters<FileSystemWritableFileStream['write']>[0]
             );
         },
         async close() {
-            const meta: OpfsMetadata = { ...metadata, size: bodySize };
+            const meta: OpfsMetadata = {
+                ...metadata,
+                size: bodySize,
+                lastAccessed: Date.now(),
+            };
             const metaJson = JSON.stringify(meta);
             const metaBytes = new TextEncoder().encode(metaJson);
             const lengthAb = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
@@ -52,7 +105,36 @@ export async function writeToOpfs(
         },
     });
 
-    await bodyStream.pipeTo(wrapper);
+    try {
+        await bodyStream.pipeTo(wrapper);
+    } catch (err) {
+        const isQuotaExceeded =
+            err instanceof Error &&
+            (err.name === 'QuotaExceededError' || err.name === 'QuotaExceeded');
+        try {
+            await dir.removeEntry(key);
+        } catch {
+            // ignore
+        }
+        if (isQuotaExceeded && url !== undefined) {
+            const entries = await listCacheFilesWithMeta(dir);
+            const totalCacheSize = getTotalCacheSize(entries);
+            const bytesWritten = bodySize;
+            if (bytesWritten >= totalCacheSize) {
+                addToBlacklist(url);
+                notifyClients(OPFS_MSG_QUOTA_EXCEEDED, { url });
+            } else {
+                const estimate = await getStorageEstimate();
+                const limit = getCacheLimit(estimate);
+                const headroom = Math.min(MEGABYTE, Math.max(0, Math.floor(limit * 0.1)));
+                const needToFree = bytesWritten + headroom;
+                const keysToDelete = computeEvictionSet(entries, needToFree);
+                await evictFiles(dir, keysToDelete);
+            }
+        }
+        notifyClients(OPFS_MSG_WRITE_FAILED, { url, reason: err instanceof Error ? err.message : String(err) });
+        throw err;
+    }
 }
 
 /**

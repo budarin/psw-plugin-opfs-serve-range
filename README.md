@@ -32,7 +32,10 @@ import {
     opfsRangeFromNetworkAndCache,
 } from '@budarin/psw-plugin-opfs-serve-range';
 
-configureOpfs({ folderName: 'ranges-media-cache' }); // опционально; по умолчанию 'range-requests-cache'
+configureOpfs({
+    folderName: 'ranges-media-cache',
+    maxCacheFraction: 0.5, // доля квоты origin для кеша (по умолчанию 0.5)
+});
 
 initServiceWorker(
     [
@@ -90,7 +93,7 @@ import {
     opfsBackgroundFetch,
 } from '@budarin/psw-plugin-opfs-serve-range';
 
-configureOpfs({ folderName: 'range-requests-cache' });
+configureOpfs({ folderName: 'range-requests-cache', maxCacheFraction: 0.5 });
 
 initServiceWorker(
     [
@@ -138,7 +141,29 @@ const metadata = metadataFromResponse(response);
 await writeToOpfs(dir, key, response.body, metadata);
 ```
 
-Ответ может быть без заголовка `Content-Length` — при записи полного тела размер определяется автоматически.
+Ответ может быть без заголовка `Content-Length` — при записи полного тела размер определяется автоматически. При использовании лимитов передайте в `writeToOpfs` пятый аргумент `options`: `{ url, knownSize }` (например, `knownSize: metadata.size > 0 ? metadata.size : undefined`).
+
+## Оповещения вкладок о квоте и лимитах
+
+Сервис-воркер отправляет сообщения клиентам при исчерпании квоты, отказе в записи, эвикции и т.д. Подписаться можно через типизированные обработчики из пакета (entry point `@budarin/psw-plugin-opfs-serve-range/client`):
+
+```typescript
+import {
+    onOPFSQuotaExceeded,
+    onOPFSWriteSkipped,
+    onOPFSSkipQuotaExceeded,
+} from '@budarin/psw-plugin-opfs-serve-range/client';
+
+onOPFSQuotaExceeded((event) => {
+    console.warn('OPFS: quota exceeded', event.data?.url);
+});
+
+onOPFSSkipQuotaExceeded((event) => {
+    console.warn('OPFS: resource not cached (quota)', event.data?.url);
+});
+```
+
+Подробнее — в [docs/opfs-cache-behavior.md](docs/opfs-cache-behavior.md).
 
 ## Очистка кеша
 
@@ -152,7 +177,7 @@ await clearOpfsCache();
 
 ## Опции плагинов
 
-Имя папки в OPFS задаётся только в **configureOpfs({ folderName })**.
+Имя папки и доля квоты задаются в **configureOpfs({ folderName, maxCacheFraction })**.
 
 - **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` — чтобы ограничить URL и кеш ответов 206.
 - **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging` — какие URL загружать при установке SW.

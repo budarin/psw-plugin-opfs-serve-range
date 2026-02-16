@@ -4,9 +4,12 @@
  */
 
 import type { Plugin } from '@budarin/pluggable-serviceworker';
+import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { getOpfsDir, urlToOpfsKey } from './index.js';
 import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
+import { isBlacklisted } from './opfsLru.js';
+import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
 
 export interface OpfsBackgroundFetchOptions {
     /**
@@ -60,6 +63,15 @@ export function opfsBackgroundFetch(
                     }
                     continue;
                 }
+                if (isBlacklisted(url)) {
+                    notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
+                    if (enableLogging) {
+                        logger.debug(
+                            `opfsBackgroundFetch: skip ${url} (blacklisted, quota exceeded)`
+                        );
+                    }
+                    continue;
+                }
                 const response = await record.responseReady;
                 if (!response.ok || !response.body) {
                     if (enableLogging) {
@@ -72,7 +84,10 @@ export function opfsBackgroundFetch(
                 try {
                     const key = await urlToOpfsKey(url);
                     const metadata = metadataFromResponse(response);
-                    await writeToOpfs(dir, key, response.body, metadata);
+                    await writeToOpfs(dir, key, response.body, metadata, {
+                        url,
+                        ...(metadata.size > 0 && { knownSize: metadata.size }),
+                    });
                     if (enableLogging) {
                         logger.debug(
                             `opfsBackgroundFetch: cached ${url} -> ${key} (${metadata.size} bytes)`
