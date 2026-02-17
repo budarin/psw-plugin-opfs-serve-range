@@ -57,11 +57,11 @@ initServiceWorker(
     [
         opfsServeRange({
             order: -15,
-            include: ['*.mp4', '*.webm', '*.pmtiles'],
+            include: ['*.mp4', '*.webm'],
         }),
         opfsRangeFromNetworkAndCache({
             order: -10,
-            include: ['*.mp4', '*.webm', '*.pmtiles'],
+            include: ['*.mp4', '*.webm'],
         }),
     ],
     { version: '1.0.0' }
@@ -115,14 +115,14 @@ initServiceWorker(
     [
         opfsServeRange({
             order: -15,
-            include: ['*.mp4', '*.webm', '*.pmtiles'],
+            include: ['*.mp4', '*.webm'],
         }),
         opfsRangeFromNetworkAndCache({
             order: -10,
-            include: ['*.mp4', '*.webm', '*.pmtiles'],
+            include: ['*.mp4', '*.webm'],
         }),
         opfsBackgroundFetch({
-            include: ['*.mp4', '*.webm', '*.pmtiles'],
+            include: ['*.mp4', '*.webm'],
             enableLogging: true,
         }),
     ],
