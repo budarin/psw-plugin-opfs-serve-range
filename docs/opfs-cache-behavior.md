@@ -1,48 +1,276 @@
-# Поведение OPFS-кеша: лимиты, LRU и оповещения
+# OPFS cache behavior: limits, LRU, and notifications
 
-Документ описывает, как плагины пакета управляют кешем в OPFS: ограничение размера, вытеснение по давности использования (LRU), обработка нехватки места и оповещение вкладок. Это нужно, чтобы понимать, что происходит при кешировании и почему некоторые ресурсы могут не попадать в кеш или удаляться из него.
-
----
-
-## 1. Зачем нужны лимиты
-
-Браузер выделяет origin **квоту** хранилища (`navigator.storage.estimate().quota`). В неё входят OPFS, IndexedDB, Cache API и др. Квота не даёт выйти за лимит (при переполнении возникает `QuotaExceeded`), но **не гарантирует**, что «хотя бы один файл влезет» — на слабых устройствах квота может быть очень маленькой.
-
-Лимиты в плагинах нужны не для защиты диска, а чтобы:
-
-1. **Делить квоту** — OPFS-кеш не должен занять всю квоту; место остаётся для остальных хранилищ приложения.
-2. **Включить LRU** — без потолка кеш рос бы до упора и никогда не чистился; лимит задаёт порог, при достижении которого начинается вытеснение старых файлов.
+This document explains how the plugins in this package manage the OPFS cache: size limits, least‑recently‑used (LRU) eviction, handling of out‑of‑space situations, and notifications to client pages. The goal is to understand what happens during caching and why some resources may not be cached or may be evicted later.
 
 ---
 
-## 2. Конфигурация
+## 1. Why limits are needed
 
-В **`configureOpfs()`** задаётся:
+The browser allocates a storage **quota** per origin (`navigator.storage.estimate().quota`). This quota is shared between OPFS, IndexedDB, Cache API and other storage types. The quota prevents writes from exceeding the limit (writes fail with `QuotaExceeded`), but it **does not guarantee** that “at least one large file will fit” – on low‑end devices the quota can be very small.
 
-- **`folderName`** — имя папки в OPFS для всех файлов кеша (по умолчанию `'range-requests-cache'`).
-- **`maxCacheFraction`** — обязательная доля квоты origin (0…1), которую разрешено занимать нашему кешу. По умолчанию `0.5` (50%).
+The cache limits in the plugins are not about “protecting the disk”; they are there to:
 
-Фактический лимит кеша в байтах вычисляется так:
+1. **Share the quota** – the OPFS cache should not take over all available storage; other parts of the application also need space.
+2. **Enable LRU eviction** – without an upper bound the cache would grow until the quota is exhausted and would never clean itself up; the limit defines a threshold at which old files start to be evicted.
+
+---
+
+## 2. Configuration
+
+In **`configureOpfs()`** you specify:
+
+- **`folderName`** – directory name in OPFS where all cache files live (default `'range-requests-cache'`).
+- **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
+
+The effective cache limit in bytes is calculated as:
+
+```text
+limit = min(quota × maxCacheFraction, quota − usage)
+```
+
+So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.
+
+For convenience, the package exports constants:
+
+- **`KILOBYTE`**, **`MEGABYTE`**, **`GIGABYTE`** – sizes in bytes (1024, 1024², 1024³).
+
+---
+
+## 3. How data is stored (no index file)
+
+- One OPFS file per URL (the file name is a hash of the URL).
+- Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) – the time of the last access to this file.
+- **There is no index file** – the list of files and their sizes is obtained by scanning the cache directory when needed; this happens in the background and does not block responses.
+
+When a file is **read** (a Range response served from cache), the last access time is updated **in the background**, in parallel with streaming the response to the client. When a file is **written**, the current time is stored in metadata immediately.
+
+---
+
+## 4. Writing when size is known (Content-Length)
+
+When the response size is known from the `Content-Length` header:
+
+1. The code computes how many bytes need to be **freed** so that the new file fits within both the cache limit and the quota:  
+   `needToFree = max(0, currentCacheSize + fileSize − limit, …)` (also taking quota into account when needed).
+2. **“Will it ever fit?” check:**  
+   If we would have to delete more than the total cache size (i.e. even deleting all existing files would not free enough space), the write **does not start at all**. The resource is not cached, and a notification is sent to clients (for example, that the file does not fit or caching was skipped).
+3. If it is possible to fit the file after eviction: from the list of cache files (size + `lastAccessed`) the algorithm chooses the **minimal set** of files to delete – the ones that have not been used for the longest time, until the sum of their sizes reaches at least `needToFree`. Only those files are removed.
+4. After eviction completes, the new file is written.
+
+In other words, when the size is known, the cache does not “delete blindly until it fits”; it calculates what needs to be removed, evicts just enough, and then writes the file.
+
+---
+
+## 5. Writing when size is unknown (stream without Content-Length)
+
+When the size is unknown (the response is a stream):
+
+- The file is written to OPFS as a stream. If a **QuotaExceeded** error occurs (quota is exhausted), the write is aborted.
+
+After the error:
+
+1. The **partial file is always removed** – the cache never keeps a broken file.
+2. The code calculates how many bytes were written before the error (**bytesWritten**) and how big the entire cache is (**totalCacheSize**).
+3. **Decision: should we evict more?**
+   - If **bytesWritten ≥ totalCacheSize** – we have already written at least as much as we could possibly free by deleting the whole cache. This means the resource is “bigger than we can ever store” under the current quota. **No eviction is performed** (it would be pointless). The URL is added to an in‑memory list of resources we do not try to cache again (see below).
+   - If **bytesWritten < totalCacheSize** – by freeing some cache space we could have more room. In this case, an LRU eviction is performed (freeing approximately **bytesWritten + some headroom**) so that the cache does not stay overfilled and future writes have a better chance to succeed.
+
+The stream is not re‑read – there is no automatic retry for **the same** response. On the next request for the same URL there will be a new response and a new stream.
+
+---
+
+## 6. Resources that are not re‑cached
+
+For **streaming** responses (without `Content-Length`) after QuotaExceeded we might determine that “even deleting the entire cache would not be enough” (bytesWritten ≥ totalCacheSize). In that case:
+
+- The **URL is added to a blacklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
+- For each such **repeat request**, a **quota‑related notification** is sent to clients (for example, that the resource is too large to cache). The application can show a UI hint like “not enough space to cache this resource”.
+
+---
+
+## 7. Notifying client pages
+
+The service worker sends messages to all client windows using the `notifyClients` helper from `@budarin/pluggable-serviceworker`. The message type and payload (for example, `url`, sizes, limits) depend on the event:
+
+- Quota exceeded while writing (QuotaExceeded).
+- Write refused when size is known (the file would not fit even after clearing the cache).
+- Cache limit reached / eviction performed.
+- Write error (including after deleting a partial file).
+- Repeat request for a URL from the “blacklist” – a quota‑related message is sent so the client can show a warning.
+
+On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). Details and examples are provided in the README and type definitions.
+
+---
+
+## 8. Edge cases
+
+- **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
+- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blacklisting follows the rules above.
+- **Updating `lastAccessed`** on read never blocks the response – it runs in the background.
+
+---
+
+In summary: the cache is limited by both the configured fraction of the origin quota and the currently available free space. Eviction uses LRU with a precomputed eviction set; for streaming writes without a known size, after QuotaExceeded the code either evicts with some headroom or marks the URL as “too large to cache” and, on subsequent requests, only notifies clients about quota issues without attempting to cache the resource again.
+
+# OPFS cache behavior: limits, LRU, and notifications
+
+This document explains how the plugins in this package manage the OPFS cache: size limits, least‑recently‑used (LRU) eviction, handling of out‑of‑space situations, and notifications to client pages. The goal is to understand what happens during caching and why some resources may not be cached or may be evicted later.
+
+---
+
+## 1. Why limits are needed
+
+The browser allocates a storage **quota** per origin (`navigator.storage.estimate().quota`). This quota is shared between OPFS, IndexedDB, Cache API and other storage types. The quota prevents writes from exceeding the limit (writes fail with `QuotaExceeded`), but it **does not guarantee** that “at least one large file will fit” – on low‑end devices the quota can be very small.
+
+The cache limits in the plugins are not about “protecting the disk”; they are there to:
+
+1. **Share the quota** – the OPFS cache should not take over all available storage; other parts of the application also need space.
+2. **Enable LRU eviction** – without an upper bound the cache would grow until the quota is exhausted and would never clean itself up; the limit defines a threshold at which old files start to be evicted.
+
+---
+
+## 2. Configuration
+
+In **`configureOpfs()`** you specify:
+
+- **`folderName`** – directory name in OPFS where all cache files live (default `'range-requests-cache'`).
+- **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
+
+The effective cache limit in bytes is calculated as:
 
 ```
-лимит = min(quota × maxCacheFraction, quota − usage)
+limit = min(quota × maxCacheFraction, quota − usage)
 ```
 
-То есть кеш не может быть больше ни доли квоты, ни текущего свободного места. `quota` и `usage` берутся из `navigator.storage.estimate()`.
+So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.
 
-Для удобства в конфиге можно использовать экспортируемые константы:
+For convenience, the package exports constants:
 
-- **`KILOBYTE`**, **`MEGABYTE`**, **`GIGABYTE`** — размеры в байтах (1024, 1024², 1024³).
+- **`KILOBYTE`**, **`MEGABYTE`**, **`GIGABYTE`** – sizes in bytes (1024, 1024², 1024³).
 
 ---
 
-## 3. Как хранятся данные (без индексного файла)
+## 3. How data is stored (no index file)
 
-- Один файл в OPFS на один URL (ключ — хеш URL).
-- В конце каждого файла — футер с метаданными (JSON + 4 байта длины). В метаданных есть **`lastAccessed`** (timestamp) — время последнего обращения к файлу.
-- **Индексного файла нет** — список файлов и их размеры получаются сканированием папки при необходимости; это делается в фоне и не блокирует ответы.
+- One OPFS file per URL (the file name is a hash of the URL).
+- Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) – the time of the last access to this file.
+- **There is no index file** – the list of files and their sizes is obtained by scanning the cache directory when needed; this happens in the background and does not block responses.
 
-При **чтении** (ответ по Range из кеша) время последнего доступа обновляется **в фоне**, параллельно с отдачей ответа клиенту. При **записи** нового файла в метаданные сразу ставится текущее время.
+When a file is **read** (a Range response served from cache), the last access time is updated **in the background**, in parallel with streaming the response to the client. When a file is **written**, the current time is stored in metadata immediately.
+
+---
+
+## 4. Writing when size is known (Content-Length)
+
+When the response size is known from the `Content-Length` header:
+
+1. The code computes how many bytes need to be **freed** so that the new file fits within both the cache limit and the quota:  
+   `needToFree = max(0, currentCacheSize + fileSize − limit, …)` (also taking quota into account when needed).
+2. **“Will it ever fit?” check:**  
+   If we would have to delete more than the total cache size (i.e. even deleting all existing files would not free enough space), the write **does not start at all**. The resource is not cached, and a notification is sent to clients (for example, that the file does not fit or caching was skipped).
+3. If it is possible to fit the file after eviction: from the list of cache files (size + `lastAccessed`) the algorithm chooses the **minimal set** of files to delete – the ones that have not been used for the longest time, until the sum of their sizes reaches at least `needToFree`. Only those files are removed.
+4. After eviction completes, the new file is written.
+
+In other words, when the size is known, the cache does not “delete blindly until it fits”; it calculates what needs to be removed, evicts just enough, and then writes the file.
+
+---
+
+## 5. Writing when size is unknown (stream without Content-Length)
+
+When the size is unknown (the response is a stream):
+
+- The file is written to OPFS as a stream. If a **QuotaExceeded** error occurs (quota is exhausted), the write is aborted.
+
+After the error:
+
+1. The **partial file is always removed** – the cache never keeps a broken file.
+2. The code calculates how many bytes were written before the error (**bytesWritten**) and how big the entire cache is (**totalCacheSize**).
+3. **Decision: should we evict more?**
+   - If **bytesWritten ≥ totalCacheSize** – we have already written at least as much as we could possibly free by deleting the whole cache. This means the resource is “bigger than we can ever store” under the current quota. **No eviction is performed** (it would be pointless). The URL is added to an in‑memory list of resources we do not try to cache again (see below).
+   - If **bytesWritten < totalCacheSize** – by freeing some cache space we could have more room. In this case, an LRU eviction is performed (freeing approximately **bytesWritten + some headroom**) so that the cache does not stay overfilled and future writes have a better chance to succeed.
+
+The stream is not re‑read – there is no automatic retry for **the same** response. On the next request for the same URL there will be a new response and a new stream.
+
+---
+
+## 6. Resources that are not re‑cached
+
+For **streaming** responses (without `Content-Length`) after QuotaExceeded we might determine that “even deleting the entire cache would not be enough” (bytesWritten ≥ totalCacheSize). In that case:
+
+- The **URL is added to a blacklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
+- For each such **repeat request**, a **quota‑related notification** is sent to clients (for example, that the resource is too large to cache). The application can show a UI hint like “not enough space to cache this resource”.
+
+---
+
+## 7. Notifying client pages
+
+The service worker sends messages to all client windows using the `notifyClients` helper from `@budarin/pluggable-serviceworker`. The message type and payload (for example, `url`, sizes, limits) depend on the event:
+
+- Quota exceeded while writing (QuotaExceeded).
+- Write refused when size is known (the file would not fit even after clearing the cache).
+- Cache limit reached / eviction performed.
+- Write error (including after deleting a partial file).
+- Repeat request for a URL from the “blacklist” – a quota‑related message is sent so the client can show a warning.
+
+On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). Details and examples are provided in the README and type definitions.
+
+---
+
+## 8. Edge cases
+
+- **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
+- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blacklisting follows the rules above.
+- **Updating `lastAccessed`** on read never blocks the response – it runs in the background.
+
+---
+
+In summary: the cache is limited by both the configured fraction of the origin quota and the currently available free space. Eviction uses LRU with a precomputed eviction set; for streaming writes without a known size, after QuotaExceeded the code either evicts with some headroom or marks the URL as “too large to cache” and, on subsequent requests, only notifies clients about quota issues without attempting to cache the resource again.
+
+# OPFS cache behavior: limits, LRU, and notifications
+
+This document explains how the plugins in this package manage the OPFS cache: size limits, least‑recently‑used (LRU) eviction, handling of out‑of‑space situations, and notifications to client pages. The goal is to make it clear why some resources might not be cached or might be evicted even if they were cached earlier.
+
+---
+
+## 1. Why limits are needed
+
+The browser allocates a storage **quota** per origin (`navigator.storage.estimate().quota`). This quota is shared between OPFS, IndexedDB, Cache API, etc. The quota prevents you from exceeding the limit (writes fail with `QuotaExceeded`), but it **does not guarantee** that “at least one large file will fit” – on low‑end devices the quota can be very small.
+
+The cache limits in the plugins are not about “protecting the disk”; they are there to:
+
+1. **Share the quota** – the OPFS cache should not take over all available storage; you want to leave room for other storage used by the app.
+2. **Enable LRU eviction** – without an upper bound the cache would grow until the quota is exhausted and would never clean itself up; the limit defines a threshold at which older files start to be evicted.
+
+---
+
+## 2. Configuration
+
+In **`configureOpfs()`** you specify:
+
+- **`folderName`** – directory name in OPFS where all cache files live (defaults to `'range-requests-cache'`).
+- **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Defaults to `0.5` (50%).
+
+The effective cache limit in bytes is calculated as:
+
+```
+limit = min(quota × maxCacheFraction, quota − usage)
+```
+
+So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.
+
+For convenience, the package exports constants:
+
+- **`KILOBYTE`**, **`MEGABYTE`**, **`GIGABYTE`** – sizes in bytes (1024, 1024², 1024³).
+
+---
+
+## 3. How data is stored (no index file)
+
+- One OPFS file per URL (the file name is a hash of the URL).
+- Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) – the time of the last access to this file.
+- **There is no index file** – the list of files and their sizes is obtained by scanning the cache directory when needed; this happens in the background and does not block responses.
+
+When a file is **read** (a Range response served from cache), the last access time is updated **in the background**, in parallel with streaming the response to the client. When a file is **written**, the current time is stored in metadata immediately.
 
 ---
 
