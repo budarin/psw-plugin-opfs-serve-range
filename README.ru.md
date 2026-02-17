@@ -19,7 +19,7 @@
 
 Все файлы кеша лежат в одной папке OPFS. Её имя задаётся один раз в **configureOpfs({ folderName })** до регистрации плагинов (по умолчанию `'range-requests-cache'`). Чтобы очистить кеш, вызовите **clearOpfsCache()** — удалится вся папка. Внутри — один файл на URL, все метаданные хранятся в самом файле.
 
-Подробное описание поведения кеша (лимиты, LRU, эвикция, оповещения) — в [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md).
+Подробное описание поведения кеша (лимиты, LRU, эвикция, оповещения) — в [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
 ## Установка
 
@@ -174,7 +174,7 @@ onOPFSSkipQuotaExceeded((event) => {
 });
 ```
 
-Подробнее — в [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md) и в разделе **«Клиентские утилиты»** этого README.
+Подробнее — в [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) и в разделе **«Клиентские утилиты»** этого README.
 
 ### Очистка кеша и управление отдельными ресурсами
 

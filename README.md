@@ -28,7 +28,7 @@ In environments without OPFS support, plugin factories return `undefined`.
 
 All cache files live under a single OPFS directory. The directory name is configured once via **configureOpfs({ folderName })** before registering plugins (defaults to `'range-requests-cache'`). To clear the cache, call **clearOpfsCache()** – the whole directory is removed. Inside, there is one file per URL; all metadata is stored in the file footer.
 
-Detailed cache behavior (limits, LRU, eviction, notifications) is described in [docs/opfs-cache-behavior.md](docs/opfs-cache-behavior.md) (Russian version: [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md)).
+Detailed cache behavior (limits, LRU, eviction, notifications) is described in [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian version: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
 ## Install
 
@@ -183,7 +183,7 @@ onOPFSSkipQuotaExceeded((event) => {
 });
 ```
 
-See [docs/opfs-cache-behavior.md](docs/opfs-cache-behavior.md) for details (Russian version: [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md)).
+See [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) for details (Russian version: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
 ### Clearing the cache and managing individual resources
 
