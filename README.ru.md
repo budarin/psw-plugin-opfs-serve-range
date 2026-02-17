@@ -194,7 +194,7 @@ onOPFSSkipQuotaExceeded((event) => {
 Имя папки и доля квоты задаются в **configureOpfs({ folderName, maxCacheFraction })**.
 
 - **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` — чтобы ограничить URL и кеш ответов 206.
-- **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging`, `pinned` — какие URL загружать при установке SW. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить (например, `['/assets/vector-map/**']`).
+- **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging`, `pinned` — какие URL загружать при установке SW. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить (например, `['/assets/media/**']`).
 - **opfsRangeFromNetworkAndCache:** `order` (например -10, после opfsServeRange), `include`, `exclude`, `enableLogging`, `pinned` — какие запросы кешировать; при запросе с Range отдаёт ответ сразу и при необходимости догружает файл в OPFS в фоне. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. При `enableLogging` в консоль пишется предупреждение, если файл уже есть в OPFS, но ответ по Range отдан с сети (например, из‑за If-Range или порядка плагинов).
 - **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging`, `pinned` — какие URL писать в OPFS по завершении Background Fetch. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. События fail/abort/click при `enableLogging` логируются; можно зарегистрировать свой плагин с теми же хуками (например, показать уведомление при fail). Запуск загрузки с клиента — утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
 
@@ -202,17 +202,17 @@ onOPFSSkipQuotaExceeded((event) => {
 
 Все три плагина кеширования (`opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) поддерживают опцию `pinned`: массив glob-паттернов для URL, которые никогда не должны удаляться алгоритмом LRU-эвикции. Ресурсы, соответствующие этим паттернам, сохраняются с `evictable: false` в метаданных и не будут удалены даже при достижении лимита кеша.
 
-Пример: пометить файлы векторных карт как закреплённые, чтобы они никогда не эвиктились, при этом медиафайлы могут удаляться:
+Пример: пометить важные медиафайлы как закреплённые, чтобы они не эвиктились, остальные закешированные медиа могут удаляться:
 
 ```typescript
 opfsPrecache({
-  urls: ['/assets/vector-map/v1/map.bin', '/assets/video.mp4'],
-  pinned: ['/assets/vector-map/**'], // файлы карт не будут эвиктиться
+  urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+  pinned: ['/assets/media/featured-video.mp4'], // важный контент не будет эвиктиться
 });
 
 opfsRangeFromNetworkAndCache({
   include: ['*.mp4', '*.webm'],
-  pinned: ['/assets/vector-map/**'], // файлы карт не будут эвиктиться
+  pinned: ['/assets/media/featured/**'], // важные медиафайлы не будут эвиктиться
 });
 ```
 

@@ -202,7 +202,7 @@ These helpers are described in more detail in the **Client utilities** section o
 The cache folder name and quota fraction are configured via **configureOpfs({ folderName, maxCacheFraction })**.
 
 - **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` – to restrict which URLs are served and how 206 responses are cached by the browser.
-- **opfsPrecache:** `urls` (array or function returning an array), `order`, `enableLogging`, `pinned` – which URLs to fetch at SW install. `pinned` is an array of glob patterns for URLs that should not be evicted (e.g., `['/assets/vector-map/**']`).
+- **opfsPrecache:** `urls` (array or function returning an array), `order`, `enableLogging`, `pinned` – which URLs to fetch at SW install. `pinned` is an array of glob patterns for URLs that should not be evicted (e.g., `['/assets/media/**']`).
 - **opfsRangeFromNetworkAndCache:** `order` (e.g. `-10`, after `opfsServeRange`), `include`, `exclude`, `enableLogging`, `pinned` – which requests to cache; on Range requests it streams the response immediately and optionally fills OPFS in the background. `pinned` is an array of glob patterns for URLs that should not be evicted. With `enableLogging`, a warning is logged when a file already exists in OPFS but the Range response is served from network (e.g. because of If-Range mismatch or plugin ordering).
 - **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging`, `pinned` – which URLs to write into OPFS when Background Fetch completes. `pinned` is an array of glob patterns for URLs that should not be evicted. `fail`/`abort`/`click` events are logged with `enableLogging`; you can register your own plugin with the same hooks (e.g. to show UI on fail). To trigger downloads from the client, use utilities from `@budarin/pluggable-serviceworker/client/background-fetch`.
 
@@ -210,17 +210,17 @@ The cache folder name and quota fraction are configured via **configureOpfs({ fo
 
 All three caching plugins (`opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) support the `pinned` option: an array of glob patterns for URLs that should never be evicted by the LRU eviction algorithm. Resources matching these patterns are stored with `evictable: false` in metadata and will not be removed even when the cache limit is reached.
 
-Example: mark vector map files as pinned so they are never evicted, while allowing media files to be evicted:
+Example: mark important media files as pinned so they are never evicted, while allowing other cached media to be evicted:
 
 ```typescript
 opfsPrecache({
-  urls: ['/assets/vector-map/v1/map.bin', '/assets/video.mp4'],
-  pinned: ['/assets/vector-map/**'], // map files won't be evicted
+  urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+  pinned: ['/assets/media/featured-video.mp4'], // featured content won't be evicted
 });
 
 opfsRangeFromNetworkAndCache({
   include: ['*.mp4', '*.webm'],
-  pinned: ['/assets/vector-map/**'], // map files won't be evicted
+  pinned: ['/assets/media/featured/**'], // featured media files won't be evicted
 });
 ```
 
