@@ -39,6 +39,10 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
      * Включить логирование.
      */
     enableLogging?: boolean;
+    /**
+     * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
+     */
+    pinned?: string[];
 }
 
 /**
@@ -47,7 +51,8 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
 async function backgroundFullFetchToOpfs(
     url: string,
     logger: Logger,
-    enableLogging: boolean
+    enableLogging: boolean,
+    pinned?: string[]
 ): Promise<void> {
     try {
         if (isBlacklisted(url)) {
@@ -76,7 +81,9 @@ async function backgroundFullFetchToOpfs(
             }
             return;
         }
-        const metadata = metadataFromResponse(response, url);
+        const baseMetadata = metadataFromResponse(response, url);
+        const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+        const metadata = { ...baseMetadata, evictable };
         const key = await urlToOpfsKey(url);
         const root = await navigator.storage.getDirectory();
         const dir = await getOpfsDir(root, true);
@@ -112,6 +119,7 @@ export function opfsRangeFromNetworkAndCache(
         include,
         exclude,
         enableLogging = false,
+        pinned,
     } = options;
 
     return {
@@ -152,7 +160,9 @@ export function opfsRangeFromNetworkAndCache(
                             headers: response.headers,
                         });
                     }
-                    const metadata = metadataFromResponse(response, url);
+                    const baseMetadata = metadataFromResponse(response, url);
+                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
                     const root = await navigator.storage.getDirectory();
                     const dir = await getOpfsDir(root, true);
@@ -205,7 +215,7 @@ export function opfsRangeFromNetworkAndCache(
                 if (response.status === 206) {
                     if (!loadingUrls.has(url)) {
                         loadingUrls.add(url);
-                        backgroundFullFetchToOpfs(url, logger, enableLogging);
+                        backgroundFullFetchToOpfs(url, logger, enableLogging, pinned);
                     }
                     return new Response(response.body, {
                         status: response.status,
@@ -235,7 +245,9 @@ export function opfsRangeFromNetworkAndCache(
                         Number.isInteger(fullSize)
                     ) {
                         const range = parseRangeHeader(rangeHeader, fullSize);
-                        const metadata = metadataFromResponse(response, url);
+                        const baseMetadata = metadataFromResponse(response, url);
+                        const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                        const metadata = { ...baseMetadata, evictable };
                         const key = await urlToOpfsKey(url);
                         const root = await navigator.storage.getDirectory();
                         const dir = await getOpfsDir(root, true);

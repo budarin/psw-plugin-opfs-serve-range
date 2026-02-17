@@ -5,7 +5,7 @@
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 import { getOpfsDir, urlToOpfsKey } from './index.js';
-import { isOpfsAvailable } from './opfsUtil.js';
+import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 
 export interface OpfsPrecacheOptions {
@@ -21,6 +21,10 @@ export interface OpfsPrecacheOptions {
      * Включить логирование.
      */
     enableLogging?: boolean;
+    /**
+     * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
+     */
+    pinned?: string[];
 }
 
 /**
@@ -33,7 +37,7 @@ export function opfsPrecache(
     if (!isOpfsAvailable()) {
         return undefined;
     }
-    const { urls, order = 0, enableLogging = false } = options;
+    const { urls, order = 0, enableLogging = false, pinned } = options;
 
     return {
         name: 'opfs-precache',
@@ -60,7 +64,9 @@ export function opfsPrecache(
                         }
                         continue;
                     }
-                    const metadata = metadataFromResponse(response, url);
+                    const baseMetadata = metadataFromResponse(response, url);
+                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
                     await writeToOpfs(dir, key, response.body, metadata, {
                         url,

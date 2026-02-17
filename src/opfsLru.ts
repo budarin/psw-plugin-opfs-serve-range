@@ -15,6 +15,8 @@ export interface CacheFileEntry {
     /** Размер файла на диске (тело + футер). */
     size: number;
     lastAccessed: number;
+    /** Можно ли эвиктить ресурс (по умолчанию true). */
+    evictable: boolean;
 }
 
 /** Результат оценки хранилища (navigator.storage.estimate). */
@@ -55,13 +57,13 @@ export function getCacheLimit(estimate: StorageEstimate): number {
 }
 
 /**
- * Читает из футера файла только lastAccessed (и размер из metadata.size для совместимости).
- * Возвращает размер файла на диске (file.size) и lastAccessed (0 если нет).
+ * Читает из футера файла полные метаданные (включая evictable и lastAccessed).
+ * Возвращает размер файла на диске (file.size), lastAccessed (0 если нет) и evictable (true по умолчанию).
  */
-async function readMetaFromFile(file: File): Promise<{ size: number; lastAccessed: number }> {
+async function readMetaFromFile(file: File): Promise<{ size: number; lastAccessed: number; evictable: boolean }> {
     const size = file.size;
     if (size < OPFS_META_FOOTER_LENGTH) {
-        return { size, lastAccessed: 0 };
+        return { size, lastAccessed: 0, evictable: true };
     }
     const footerBlob = file.slice(size - OPFS_META_FOOTER_LENGTH, size);
     const footerBuf = await footerBlob.arrayBuffer();
@@ -71,7 +73,7 @@ async function readMetaFromFile(file: File): Promise<{ size: number; lastAccesse
         metaLen > MAX_META_JSON_BYTES ||
         metaLen > size - OPFS_META_FOOTER_LENGTH
     ) {
-        return { size, lastAccessed: 0 };
+        return { size, lastAccessed: 0, evictable: true };
     }
     try {
         const jsonBlob = file.slice(
@@ -83,9 +85,10 @@ async function readMetaFromFile(file: File): Promise<{ size: number; lastAccesse
         return {
             size,
             lastAccessed: metadata.lastAccessed ?? 0,
+            evictable: metadata.evictable !== false,
         };
     } catch {
-        return { size, lastAccessed: 0 };
+        return { size, lastAccessed: 0, evictable: true };
     }
 }
 
@@ -100,8 +103,8 @@ export async function listCacheFilesWithMeta(
         if (handle.kind === 'file') {
             try {
                 const file = await (handle as FileSystemFileHandle).getFile();
-                const { size, lastAccessed } = await readMetaFromFile(file);
-                entries.push({ key: name, size, lastAccessed });
+                const { size, lastAccessed, evictable } = await readMetaFromFile(file);
+                entries.push({ key: name, size, lastAccessed, evictable });
             } catch {
                 // битый или недоступный файл — пропускаем
             }
@@ -116,7 +119,7 @@ export function getTotalCacheSize(entries: CacheFileEntry[]): number {
 
 /**
  * Вычисляет минимальный набор ключей для удаления по LRU (сначала самые старые по lastAccessed),
- * чтобы освободить хотя бы needToFree байт.
+ * чтобы освободить хотя бы needToFree байт. Пропускает файлы с evictable === false (pinned).
  */
 export function computeEvictionSet(
     entries: CacheFileEntry[],
@@ -125,7 +128,9 @@ export function computeEvictionSet(
     if (needToFree <= 0) {
         return [];
     }
-    const sorted = [...entries].sort((a, b) => a.lastAccessed - b.lastAccessed);
+    // Фильтруем только эвиктабельные файлы и сортируем по lastAccessed
+    const evictableEntries = entries.filter((e) => e.evictable);
+    const sorted = [...evictableEntries].sort((a, b) => a.lastAccessed - b.lastAccessed);
     const toDelete: string[] = [];
     let freed = 0;
     for (const e of sorted) {

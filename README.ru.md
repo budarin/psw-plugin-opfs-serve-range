@@ -126,7 +126,7 @@ initServiceWorker(
 
 **Важно:** если вы отдаёте файл из OPFS **целиком** (например, 200 без Range) плееру или другому коду — отдавайте только тело, без футера: сначала прочитайте футер и вычислите `bodySize`, затем `new Response(file.slice(0, bodySize), ...)`. Плагин opfsServeRange отдаёт только диапазоны тела (206), футер в ответ не попадает.
 
-Пример метаданных в футере (JSON): `url`, `size`, `type`, `etag`, `lastModified`. Все плагины пакета используют один формат и общий `urlToOpfsKey`.
+Пример метаданных в футере (JSON): `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. Все плагины пакета используют один формат и общий `urlToOpfsKey`. Поле `evictable` (по умолчанию `true`) указывает, можно ли эвиктить ресурс алгоритмом LRU; `false` означает, что ресурс закреплён и не будет удалён.
 
 ## Свой плагин записи в OPFS
 
@@ -194,9 +194,29 @@ onOPFSSkipQuotaExceeded((event) => {
 Имя папки и доля квоты задаются в **configureOpfs({ folderName, maxCacheFraction })**.
 
 - **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` — чтобы ограничить URL и кеш ответов 206.
-- **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging` — какие URL загружать при установке SW.
-- **opfsRangeFromNetworkAndCache:** `order` (например -10, после opfsServeRange), `include`, `exclude`, `enableLogging` — какие запросы кешировать; при запросе с Range отдаёт ответ сразу и при необходимости догружает файл в OPFS в фоне. При `enableLogging` в консоль пишется предупреждение, если файл уже есть в OPFS, но ответ по Range отдан с сети (например, из‑за If-Range или порядка плагинов).
-- **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging` — какие URL писать в OPFS по завершении Background Fetch. События fail/abort/click при `enableLogging` логируются; можно зарегистрировать свой плагин с теми же хуками (например, показать уведомление при fail). Запуск загрузки с клиента — утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
+- **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging`, `pinned` — какие URL загружать при установке SW. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить (например, `['/assets/vector-map/**']`).
+- **opfsRangeFromNetworkAndCache:** `order` (например -10, после opfsServeRange), `include`, `exclude`, `enableLogging`, `pinned` — какие запросы кешировать; при запросе с Range отдаёт ответ сразу и при необходимости догружает файл в OPFS в фоне. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. При `enableLogging` в консоль пишется предупреждение, если файл уже есть в OPFS, но ответ по Range отдан с сети (например, из‑за If-Range или порядка плагинов).
+- **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging`, `pinned` — какие URL писать в OPFS по завершении Background Fetch. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. События fail/abort/click при `enableLogging` логируются; можно зарегистрировать свой плагин с теми же хуками (например, показать уведомление при fail). Запуск загрузки с клиента — утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
+
+### Закреплённые ресурсы (защита от эвикции)
+
+Все три плагина кеширования (`opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) поддерживают опцию `pinned`: массив glob-паттернов для URL, которые никогда не должны удаляться алгоритмом LRU-эвикции. Ресурсы, соответствующие этим паттернам, сохраняются с `evictable: false` в метаданных и не будут удалены даже при достижении лимита кеша.
+
+Пример: пометить файлы векторных карт как закреплённые, чтобы они никогда не эвиктились, при этом медиафайлы могут удаляться:
+
+```typescript
+opfsPrecache({
+  urls: ['/assets/vector-map/v1/map.bin', '/assets/video.mp4'],
+  pinned: ['/assets/vector-map/**'], // файлы карт не будут эвиктиться
+});
+
+opfsRangeFromNetworkAndCache({
+  include: ['*.mp4', '*.webm'],
+  pinned: ['/assets/vector-map/**'], // файлы карт не будут эвиктиться
+});
+```
+
+По умолчанию все ресурсы эвиктабельны (`evictable: true`). Только ресурсы, соответствующие паттернам в `pinned`, защищены от эвикции.
 
 ## Требования
 

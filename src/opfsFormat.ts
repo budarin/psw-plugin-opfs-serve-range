@@ -28,4 +28,6 @@ export interface OpfsMetadata {
     lastModified?: string;
     /** Время последнего доступа (timestamp), для LRU. */
     lastAccessed?: number;
+    /** Можно ли эвиктить ресурс (по умолчанию true). false = pinned, не удалять. */
+    evictable?: boolean;
 }

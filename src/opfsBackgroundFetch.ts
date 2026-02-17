@@ -28,6 +28,10 @@ export interface OpfsBackgroundFetchOptions {
      * Включить логирование (fail/abort/click и отладочные сообщения success).
      */
     enableLogging?: boolean;
+    /**
+     * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
+     */
+    pinned?: string[];
 }
 
 /**
@@ -42,7 +46,7 @@ export function opfsBackgroundFetch(
     if (!isOpfsAvailable()) {
         return undefined;
     }
-    const { order = 0, include, exclude, enableLogging = false } = options;
+    const { order = 0, include, exclude, enableLogging = false, pinned } = options;
 
     return {
         name: 'opfs-background-fetch',
@@ -83,7 +87,9 @@ export function opfsBackgroundFetch(
                 }
                 try {
                     const key = await urlToOpfsKey(url);
-                    const metadata = metadataFromResponse(response, url);
+                    const baseMetadata = metadataFromResponse(response, url);
+                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const metadata = { ...baseMetadata, evictable };
                     await writeToOpfs(dir, key, response.body, metadata, {
                         url,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
