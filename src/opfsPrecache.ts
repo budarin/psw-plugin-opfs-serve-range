@@ -60,8 +60,7 @@ export function opfsPrecache(
                         }
                         continue;
                     }
-
-                    const metadata = metadataFromResponse(response);
+                    const metadata = metadataFromResponse(response, url);
                     const key = await urlToOpfsKey(url);
                     await writeToOpfs(dir, key, response.body, metadata, {
                         url,

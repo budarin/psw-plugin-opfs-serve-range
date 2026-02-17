@@ -83,7 +83,7 @@ export function opfsBackgroundFetch(
                 }
                 try {
                     const key = await urlToOpfsKey(url);
-                    const metadata = metadataFromResponse(response);
+                    const metadata = metadataFromResponse(response, url);
                     await writeToOpfs(dir, key, response.body, metadata, {
                         url,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),

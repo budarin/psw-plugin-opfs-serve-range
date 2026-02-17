@@ -76,7 +76,7 @@ async function backgroundFullFetchToOpfs(
             }
             return;
         }
-        const metadata = metadataFromResponse(response);
+        const metadata = metadataFromResponse(response, url);
         const key = await urlToOpfsKey(url);
         const root = await navigator.storage.getDirectory();
         const dir = await getOpfsDir(root, true);
@@ -152,7 +152,7 @@ export function opfsRangeFromNetworkAndCache(
                             headers: response.headers,
                         });
                     }
-                    const metadata = metadataFromResponse(response);
+                    const metadata = metadataFromResponse(response, url);
                     const key = await urlToOpfsKey(url);
                     const root = await navigator.storage.getDirectory();
                     const dir = await getOpfsDir(root, true);
@@ -235,7 +235,7 @@ export function opfsRangeFromNetworkAndCache(
                         Number.isInteger(fullSize)
                     ) {
                         const range = parseRangeHeader(rangeHeader, fullSize);
-                        const metadata = metadataFromResponse(response);
+                        const metadata = metadataFromResponse(response, url);
                         const key = await urlToOpfsKey(url);
                         const root = await navigator.storage.getDirectory();
                         const dir = await getOpfsDir(root, true);

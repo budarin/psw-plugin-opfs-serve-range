@@ -20,6 +20,8 @@ export const GIGABYTE = 1024 * 1024 * 1024;
 
 /** Метаданные ресурса (JSON в конце файла). */
 export interface OpfsMetadata {
+    /** Исходный URL ресурса, для которого создан этот файл. */
+    url: string;
     size: number;
     type?: string;
     etag?: string;

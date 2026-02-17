@@ -43,7 +43,7 @@ export interface WriteToOpfsOptions {
  * @param dir — папка плагина в OPFS (getOpfsDir(root, true))
  * @param key — ключ файла (например, из urlToOpfsKey(url))
  * @param bodyStream — поток тела ресурса
- * @param metadata — size обязательно; type, etag, lastModified — по желанию
+ * @param metadata — url и size обязательны; type, etag, lastModified — по желанию
  * @param options — url и/или knownSize для лимитов и оповещений
  */
 export async function writeToOpfs(
@@ -142,7 +142,7 @@ export async function writeToOpfs(
  * Если Content-Length отсутствует или невалиден, возвращает size: 0 — при записи через writeToOpfs
  * фактический размер подставится из подсчитанного тела (bodySize).
  */
-export function metadataFromResponse(response: Response): OpfsMetadata {
+export function metadataFromResponse(response: Response, url: string): OpfsMetadata {
     const contentLength = response.headers.get('Content-Length');
     const parsed = contentLength ? parseInt(contentLength, 10) : 0;
     const size =
@@ -153,6 +153,7 @@ export function metadataFromResponse(response: Response): OpfsMetadata {
     const lastModified = response.headers.get('Last-Modified') ?? undefined;
 
     return {
+        url,
         size,
         type,
         ...(etag && { etag }),
