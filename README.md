@@ -8,7 +8,7 @@ Service Worker plugins and utilities for `@budarin/pluggable-serviceworker` that
 [![npm](https://img.shields.io/npm/v/@budarin/psw-plugin-opfs-serve-range?color=cb0000)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 [![npm](https://img.shields.io/npm/dt/@budarin/psw-plugin-opfs-serve-range)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 [![bundle](https://img.shields.io/bundlephobia/minzip/@budarin/psw-plugin-opfs-serve-range)](https://bundlephobia.com/result?p=@budarin/psw-plugin-opfs-serve-range)
-[![GitHub](https://img.shields.io/github/license/budarin/psw-plugin-opfs-serve-range)](https://github.com/budarin/psw-plugin-opfs-serve-range)
+[![license](https://img.shields.io/npm/l/@budarin/psw-plugin-opfs-serve-range)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 
 Large media files and other heavy assets are almost always requested in chunks via HTTP Range rather than as a single download. When such files live in a regular HTTP cache (Cache API), the service worker often has to read and process the entire file to serve a small range, which is wasteful in terms of memory and CPU and quickly hits storage limits on low‑end devices.
 

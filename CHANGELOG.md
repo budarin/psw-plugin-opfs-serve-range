@@ -4,6 +4,11 @@
 
 - …
 
+## 1.0.2 - 2026-02-17
+
+- Документация: добавлены английские версии README и описания поведения кеша OPFS (`docs/opfs-cache-behavior.md`), доработан русский README и `docs/opfs-cache-behavior.ru.md` (тон, терминология, структура).
+- README: добавлены и выровнены бейджи (CI, npm, bundlephobia, license), ссылки на русскую/английскую документацию.
+
 ## 1.0.1 - 2026-02-17
 
 - Первая публичная версия `@budarin/psw-plugin-opfs-serve-range`.

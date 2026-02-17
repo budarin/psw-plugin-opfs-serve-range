@@ -1,10 +1,5 @@
 # @budarin/psw-plugin-opfs-serve-range
 
-[![CI](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@budarin/psw-plugin-opfs-serve-range?color=cb0000)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
-[![npm](https://img.shields.io/npm/dt/@budarin/psw-plugin-opfs-serve-range)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
-[![bundle](https://img.shields.io/bundlephobia/minzip/@budarin/psw-plugin-opfs-serve-range)](https://bundlephobia.com/result?p=@budarin/psw-plugin-opfs-serve-range)
-[![GitHub](https://img.shields.io/github/license/budarin/psw-plugin-opfs-serve-range)](https://github.com/budarin/psw-plugin-opfs-serve-range)
 
 Большие медиафайлы и другие «тяжёлые» ресурсы почти всегда запрашиваются по частям через HTTP Range, а не одним куском. Когда такие файлы лежат в обычном HTTP‑кеше (Cache API), сервис‑воркеру приходится каждый раз читать и обрабатывать весь файл, даже если клиенту нужен только небольшой диапазон. Это лишняя нагрузка на память и процессор, которая особенно больно бьёт по слабым устройствам и при небольшой квоте хранилища.
 
