@@ -159,7 +159,11 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 The response may not have a `Content-Length` header – when writing the full body, the size is determined automatically from the bytes written. When using limits, pass the fifth `options` argument to `writeToOpfs`: `{ url, knownSize }` (for example, `knownSize: metadata.size > 0 ? metadata.size : undefined`).
 
-## Tab notifications about quota and limits
+## Client utilities
+
+Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opfs-serve-range/client`.
+
+### Tab notifications about quota and limits
 
 The service worker sends messages to clients when quota is exceeded, writes are refused, eviction happens, etc. You can subscribe using typed handlers from the client entry point `@budarin/psw-plugin-opfs-serve-range/client`:
 
@@ -181,7 +185,7 @@ onOPFSSkipQuotaExceeded((event) => {
 
 See [docs/opfs-cache-behavior.md](docs/opfs-cache-behavior.md) for details (Russian version: [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md)).
 
-## Clearing the cache and managing individual resources
+### Clearing the cache and managing individual resources
 
 To wipe the whole cache (e.g. from a UI button or on logout), call `clearOpfsCache()` from the service worker or client – the entire cache directory will be deleted.
 
@@ -190,6 +194,8 @@ If you need finer‑grained control (show a list of cached resources and let use
 - get a list of resources stored in OPFS with sizes and types – `listOpfsCachedResources()`;
 - check whether a particular URL is cached – `hasInOpfsCache(url)`;
 - delete a single resource by URL – `deleteFromOpfsCache(url)`.
+
+These helpers are described in more detail in the **Client utilities** section of this README and in the TypeScript definitions.
 
 ## Plugin options
 

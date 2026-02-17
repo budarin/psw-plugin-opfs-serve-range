@@ -150,7 +150,11 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 Ответ может быть без заголовка `Content-Length` — при записи полного тела размер определяется автоматически. При использовании лимитов передайте в `writeToOpfs` пятый аргумент `options`: `{ url, knownSize }` (например, `knownSize: metadata.size > 0 ? metadata.size : undefined`).
 
-## Оповещения вкладок о квоте и лимитах
+## Клиентские утилиты
+
+Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`.
+
+### Оповещения вкладок о квоте и лимитах
 
 Сервис-воркер отправляет сообщения клиентам при исчерпании квоты, отказе в записи, эвикции и т.д. Подписаться можно через типизированные обработчики из пакета (entry point `@budarin/psw-plugin-opfs-serve-range/client`):
 
@@ -170,9 +174,9 @@ onOPFSSkipQuotaExceeded((event) => {
 });
 ```
 
-Подробнее — в [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md).
+Подробнее — в [docs/opfs-cache-behavior.ru.md](docs/opfs-cache-behavior.ru.md) и в разделе **«Клиентские утилиты»** этого README.
 
-## Очистка кеша и управление отдельными ресурсами
+### Очистка кеша и управление отдельными ресурсами
 
 Когда нужно сбросить весь кеш (например, по кнопке в UI или при логауте), можно вызвать clearOpfsCache() из сервис-воркера или клиента — будет удалена вся папка кеша.
 
@@ -183,6 +187,8 @@ onOPFSSkipQuotaExceeded((event) => {
 - получить список ресурсов в OPFS-кеше с размерами и типами — listOpfsCachedResources();
 - проверить, есть ли конкретный URL в кеше — hasInOpfsCache(url);
 - удалить один ресурс по URL — deleteFromOpfsCache(url).
+
+Эти утилиты и подписки на события описаны подробнее в разделе **«Клиентские утилиты»** и в типах пакета.
 
 ## Опции плагинов
 

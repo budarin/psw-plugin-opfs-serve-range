@@ -98,7 +98,7 @@ The service worker sends messages to all client windows using the `notifyClients
 - Write error (including after deleting a partial file).
 - Repeat request for a URL from the “blacklist” – a quota‑related message is sent so the client can show a warning.
 
-On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). Details and examples are provided in the README and type definitions.
+On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). The full list of client utilities (including cache management helpers such as `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache`) with usage examples is described in the **Client utilities** section of the README and in the TypeScript definitions.
 
 ---
 
