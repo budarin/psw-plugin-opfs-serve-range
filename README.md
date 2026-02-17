@@ -14,7 +14,7 @@ Large media files and other heavy assets are almost always requested in chunks v
 
 This package takes a different approach: it uses the Origin Private File System (OPFS) as the primary storage for large resources and range responses. Files are stored in OPFS in a custom format (one file per URL plus a metadata footer), and ranges are read directly from the file system instead of Cache API. On top of that, the package provides plugins for precaching, background downloads, and serving range requests.
 
-Unlike `@budarin/psw-plugin-serve-range-requests`, which works on top of the regular browser cache (Cache API) and serves ranges for already cached responses, this package uses OPFS as the cache backend: it gives you explicit control over quota and eviction policy (limits, LRU, notifications to tabs), supports “download first, then play offline for a long time” scenarios (via Background Fetch and precache), and exposes utilities for implementing your own OPFS writers and plugins.
+Unlike `@budarin/psw-plugin-serve-range-requests`, which uses the Cache API: cached data can only be read **sequentially**, with no random access, so serving a range at the end or in the middle of a large file requires reading everything from the start up to that point. This package uses OPFS: the requested range is read directly from the file (random access), with no need to read preceding bytes — any part of the file is equally fast to access. In addition, you control quota and eviction (limits, LRU, pinned resources, tab notifications), “download in background, then use offline” is supported (Background Fetch, precache), and utilities are provided for your own OPFS read/write plugins.
 
 ### What this package provides
 
