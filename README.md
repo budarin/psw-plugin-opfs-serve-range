@@ -2,7 +2,7 @@
 
 [Русская версия](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/README.ru.md)
 
-Service Worker plugins and utilities for `@budarin/pluggable-serviceworker` that serve HTTP Range requests from files stored in Origin Private File System (OPFS).
+Service Worker plugins and utilities for [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker) that serve HTTP Range requests from files stored in Origin Private File System (OPFS).
 
 [![CI](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@budarin/psw-plugin-opfs-serve-range?color=cb0000)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
