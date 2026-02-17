@@ -5,7 +5,7 @@ on:
         branches: [master, main]
         paths:
             - 'src/**'
-            - 'tests/**'
+            - 'test/**'
             - 'package.json'
             - 'pnpm-lock.yaml'
             - 'tsconfig.json'
@@ -15,7 +15,7 @@ on:
         branches: [master, main]
         paths:
             - 'src/**'
-            - 'tests/**'
+            - 'test/**'
             - 'package.json'
             - 'pnpm-lock.yaml'
             - 'tsconfig.json'
@@ -47,3 +47,6 @@ jobs:
 
             - name: Build
               run: pnpm run build
+
+            - name: Unit tests
+              run: pnpm run test

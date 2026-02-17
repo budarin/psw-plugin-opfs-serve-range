@@ -40,11 +40,13 @@
         "@budarin/pluggable-serviceworker": "^1.10.4",
         "@types/serviceworker": "^0.0.191",
         "@types/web": "^0.0.336",
-        "typescript": "^5.9.3"
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18"
     },
     "scripts": {
         "build": "tsc",
         "type-check": "tsc -b -noEmit",
+        "test": "vitest run",
         "clear-caches": "sh scripts/clear-caches.sh",
         "pnpm-install": "pnpm install",
         "upgrade-deps": "sh scripts/upgrade-deps.sh",
