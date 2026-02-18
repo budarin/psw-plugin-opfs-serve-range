@@ -175,7 +175,7 @@ await writeToOpfs(dir, key, response.body, metadata);
 - `hasInOpfsCache(url: string): Promise<boolean>` — есть ли URL в кеше.
 - `deleteFromOpfsCache(url: string): Promise<void>` — удалить ресурс по URL из кеша.
 
-Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета; константы типов сообщений — `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE` и т.д.
+Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
 ### Оповещения вкладок о квоте и лимитах
 

@@ -185,7 +185,7 @@ Each function takes a handler and returns an unsubscribe function `() => void`. 
 - `hasInOpfsCache(url: string): Promise<boolean>` — whether the URL is in the cache.
 - `deleteFromOpfsCache(url: string): Promise<void>` — remove resource by URL from the cache.
 
-Types `OpfsMessagePayload` and `OpfsCachedResource` are exported; message type constants are `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, etc.
+Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
 ### Tab notifications about quota and limits
 
