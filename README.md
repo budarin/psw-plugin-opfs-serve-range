@@ -233,7 +233,9 @@ type Unsubscribe = () => void;
     onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
     ```
 
-### Cache management and types
+### Cache management utilities
+
+Functions to list cached resources, check by URL, and remove by URL. Called from the client (page); use when you need to show the user what is cached and let them delete selected items.
 
 - **`listOpfsCachedResources`** — returns the list of cached resources.
 
