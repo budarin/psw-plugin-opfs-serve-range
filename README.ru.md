@@ -155,25 +155,112 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 **Данные в сообщениях**
 
-Обработчик получает `MessageEvent`; `event.data` имеет тип `{ type: string } & OpfsMessagePayload` плюс при необходимости поле `count`. Конкретный набор полей зависит от типа сообщения (см. таблицу ниже). Тип `OpfsMessagePayload` в пакете: `{ url?: string; size?: number; limit?: number; reason?: string }`.
+Обработчик получает `MessageEvent`; `event.data` имеет тип `{ type: string } & OpfsMessagePayload` плюс при необходимости поле `count`. Тип `OpfsMessagePayload` в пакете: `{ url?: string; size?: number; limit?: number; reason?: string }`.
 
 **Подписки на сообщения**
 
-Каждая функция принимает обработчик и возвращает функцию отписки `() => void`. В таблице только те подписки, **сообщения которых сервис-воркер реально отправляет** в текущей версии пакета; точный состав `event.data` — в последней колонке.
+Каждая функция принимает обработчик и возвращает функцию отписки (вызов снимает подписку). Ниже перечислены подписки, сообщения которых сервис-воркер реально отправляет в текущей версии.
 
-| Функция | Сигнатура | Когда вызывается | Поля в `event.data` (кроме `type`) |
-|--------|-----------|-------------------|------------------------------------|
-| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | При записи в OPFS браузер вернул QuotaExceeded. | `url: string` |
-| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Запись не начата: файл не влезает даже после эвикции. | `url: string`, `size: number`, `reason: string` |
-| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Эвикция завершена. | `count: number` (число удалённых файлов) |
-| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Ошибка записи (сеть, диск, удалён частичный файл). | `url?: string`, `reason: string` |
-| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Повторный запрос к URL из чёрного списка (ресурс не кешируем). | `url: string` |
+```ts
+type Unsubscribe = () => void;
+```
+
+### `onOPFSQuotaExceeded` — подписка на уведомление об исчерпании квоты при записи в OPFS.
+
+```ts
+onOPFSQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+    ```ts
+    {
+        type: string;
+        url: string;
+    }
+    ```
+
+### `onOPFSWriteSkipped` — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
+
+```ts
+onOPFSWriteSkipped(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+    ```ts
+    {
+        type: string;
+        url: string;
+        /** Размер файла в байтах */
+        size: number;
+        /** Причина (почему запись не начата) */
+        reason: string;
+    }
+    ```
+
+### `onOPFSEvictionCompleted` — подписка на уведомление о завершении эвикции.
+
+```ts
+onOPFSEvictionCompleted(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+    ```ts
+    {
+        type: string;
+        /** Число удалённых при эвикции файлов */
+        count: number;
+    }
+    ```
+
+### `onOPFSWriteFailed` — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
+
+```ts
+onOPFSWriteFailed(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+    ```ts
+    {
+      type: string;
+      url?: string;
+      /** Причина ошибки записи */
+      reason: string;
+    }
+    ```
+
+### `onOPFSSkipQuotaExceeded` — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
+
+```ts
+onOPFSSkipQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+    ```ts
+    {
+        type: string;
+        url: string;
+    }
+    ```
 
 **Управление кешем и типы**
 
-- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — список закешированных ресурсов; элемент: `{ url, size, type?, lastModified? }`.
-- `hasInOpfsCache(url: string): Promise<boolean>` — есть ли URL в кеше.
-- `deleteFromOpfsCache(url: string): Promise<void>` — удалить ресурс по URL из кеша.
+### `listOpfsCachedResources` — возвращает список закешированных ресурсов. Элемент: `{ url, size, type?, lastModified? }`.
+
+```ts
+listOpfsCachedResources(): Promise<OpfsCachedResource[]>
+```
+
+### `hasInOpfsCache` — проверяет наличие URL в кеше.
+
+```ts
+hasInOpfsCache(url: string): Promise<boolean>
+```
+
+### `deleteFromOpfsCache` — удаляет ресурс по URL из кеша.
+
+```ts
+deleteFromOpfsCache(url: string): Promise<void>
+```
 
 Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
@@ -209,22 +296,60 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 Когда нужно сбросить весь кеш (например, по кнопке в UI или при логауте), можно вызвать `clearOpfsCache()` из сервис-воркера или клиента — будет удалена вся папка кеша.
 
-Если нужно работать с отдельными ресурсами (показать пользователю список сохранённых файлов и дать удалить что-то выборочно), можно использовать клиентские утилиты из entry point `@budarin/psw-plugin-opfs-serve-range/client`. Список в кеше строится по метаданным в футере (там теперь хранится исходный url каждого ресурса).
+Если нужно работать с отдельными ресурсами (показать пользователю список сохранённых файлов и дать удалить что-то выборочно), используйте клиентские утилиты из entry point `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (см. выше). Список в кеше строится по метаданным в футере (там хранится исходный url каждого ресурса).
 
-Основные сценарии:
+## Спецификации плагинов
 
-- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — список ресурсов в OPFS-кеше (url, size, type, lastModified);
-- `hasInOpfsCache(url: string): Promise<boolean>` — есть ли URL в кеше;
-- `deleteFromOpfsCache(url: string): Promise<void>` — удалить один ресурс по URL.
+Общая настройка кеша (имя папки, доля квоты) задаётся в **configureOpfs({ folderName, maxCacheFraction })**. Ниже — плагины пакета и их опции.
 
-## Опции плагинов
+### `opfsServeRange` — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
 
-Имя папки и доля квоты задаются в **configureOpfs({ folderName, maxCacheFraction })**.
+```ts
+opfsServeRange(options?: {
+  order?: number;
+  enableLogging?: boolean;
+  include?: string[];
+  exclude?: string[];
+  rangeResponseCacheControl?: string; // Cache-Control для ответов 206 (по умолчанию max-age=31536000, immutable)
+}): Plugin | undefined
+```
 
-- **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` — чтобы ограничить URL и кеш ответов 206.
-- **opfsPrecache:** `urls` (список или функция, возвращающая список), `order`, `enableLogging`, `pinned` — какие URL загружать при установке SW. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить (например, `['/assets/media/**']`).
-- **opfsRangeFromNetworkAndCache:** `order` (например -10, после opfsServeRange), `include`, `exclude`, `enableLogging`, `pinned` — какие запросы кешировать; при запросе с Range отдаёт ответ сразу и при необходимости догружает файл в OPFS в фоне. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. При `enableLogging` в консоль пишется предупреждение, если файл уже есть в OPFS, но ответ по Range отдан с сети (например, из‑за If-Range или порядка плагинов).
-- **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging`, `pinned` — какие URL писать в OPFS по завершении Background Fetch. `pinned` — массив glob-паттернов для URL, которые нельзя эвиктить. События fail/abort/click при `enableLogging` логируются; можно зарегистрировать свой плагин с теми же хуками (например, показать уведомление при fail). Запуск загрузки с клиента — утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
+### `opfsPrecache` — при установке сервис-воркера загружает список URL и записывает их в OPFS.
+
+```ts
+opfsPrecache(options: {
+  urls: string[] | (() => Promise<string[]>); // список URL или функция
+  order?: number;
+  enableLogging?: boolean;
+  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции (см. «Закреплённые ресурсы»)
+}): Plugin | undefined
+```
+
+### `opfsRangeFromNetworkAndCache` — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
+
+```ts
+opfsRangeFromNetworkAndCache(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
+}): Plugin | undefined
+```
+
+### `opfsBackgroundFetch` — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
+
+```ts
+opfsBackgroundFetch(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
+}): Plugin | undefined
+```
+
+Запуск загрузки с клиента: утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
 
 ### Закреплённые ресурсы (защита от эвикции)
 
@@ -234,13 +359,13 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 ```typescript
 opfsPrecache({
-  urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
-  pinned: ['/assets/media/featured-video.mp4'], // важный контент не будет эвиктиться
+    urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+    pinned: ['/assets/media/featured-video.mp4'], // важный контент не будет эвиктиться
 });
 
 opfsRangeFromNetworkAndCache({
-  include: ['*.mp4', '*.webm'],
-  pinned: ['/assets/media/featured/**'], // важные медиафайлы не будут эвиктиться
+    include: ['*.mp4', '*.webm'],
+    pinned: ['/assets/media/featured/**'], // важные медиафайлы не будут эвиктиться
 });
 ```
 

@@ -165,25 +165,112 @@ Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opf
 
 **Message payload**
 
-Each handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`, and some events add a `count` field. The exact set of fields depends on the message type (see table below). The package type `OpfsMessagePayload` is `{ url?: string; size?: number; limit?: number; reason?: string }`.
+Each handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`, and some events add a `count` field. The package type `OpfsMessagePayload` is `{ url?: string; size?: number; limit?: number; reason?: string }`.
 
 **Message subscriptions**
 
-Each function takes a handler and returns an unsubscribe function `() => void`. The table lists only subscriptions for messages **that the service worker actually sends** in the current version; the exact `event.data` fields are in the last column.
+Each function takes a handler and returns an unsubscribe function (call it to remove the subscription). Below are the subscriptions for messages that the service worker actually sends in the current version.
 
-| Function | Signature | When it runs | Fields in `event.data` (besides `type`) |
-|----------|-----------|---------------|----------------------------------------|
-| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Browser threw QuotaExceeded while writing to OPFS. | `url: string` |
-| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Write not started: file does not fit even after eviction. | `url: string`, `size: number`, `reason: string` |
-| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Eviction finished. | `count: number` (number of files removed) |
-| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Write error (network, disk, partial file removed). | `url?: string`, `reason: string` |
-| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Repeat request for a blacklisted URL (resource not cached). | `url: string` |
+```ts
+type Unsubscribe = () => void;
+```
+
+### `onOPFSQuotaExceeded` — subscribe to notification when the browser throws QuotaExceeded while writing to OPFS.
+
+```ts
+onOPFSQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+  ```ts
+  {
+    type: string;
+    url: string;
+  }
+  ```
+
+### `onOPFSWriteSkipped` — subscribe to notification when the write was skipped (file does not fit even after eviction).
+
+```ts
+onOPFSWriteSkipped(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+  ```ts
+  {
+    type: string;
+    url: string;
+    /** File size in bytes */
+    size: number;
+    /** Reason the write was not started */
+    reason: string;
+  }
+  ```
+
+### `onOPFSEvictionCompleted` — subscribe to notification when eviction has finished.
+
+```ts
+onOPFSEvictionCompleted(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+  ```ts
+  {
+    type: string;
+    /** Number of files removed by eviction */
+    count: number;
+  }
+  ```
+
+### `onOPFSWriteFailed` — subscribe to notification on write error (network, disk, partial file removed).
+
+```ts
+onOPFSWriteFailed(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+  ```ts
+  {
+    type: string;
+    url?: string;
+    /** Reason the write failed */
+    reason: string;
+  }
+  ```
+
+### `onOPFSSkipQuotaExceeded` — subscribe to notification on repeat request for a blacklisted URL (resource not cached).
+
+```ts
+onOPFSSkipQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+```
+
+- `event.data`:
+  ```ts
+  {
+    type: string;
+    url: string;
+  }
+  ```
 
 **Cache management and types**
 
-- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — list of cached resources; each item: `{ url, size, type?, lastModified? }`.
-- `hasInOpfsCache(url: string): Promise<boolean>` — whether the URL is in the cache.
-- `deleteFromOpfsCache(url: string): Promise<void>` — remove resource by URL from the cache.
+### `listOpfsCachedResources` — returns the list of cached resources. Each item: `{ url, size, type?, lastModified? }`.
+
+```ts
+listOpfsCachedResources(): Promise<OpfsCachedResource[]>
+```
+
+### `hasInOpfsCache` — checks whether a URL is in the cache.
+
+```ts
+hasInOpfsCache(url: string): Promise<boolean>
+```
+
+### `deleteFromOpfsCache` — removes a resource by URL from the cache.
+
+```ts
+deleteFromOpfsCache(url: string): Promise<void>
+```
 
 Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
@@ -219,20 +306,60 @@ When each message is sent: [opfs-cache-behavior.md](https://github.com/budarin/p
 
 To wipe the whole cache (e.g. from a UI button or on logout), call `clearOpfsCache()` from the service worker or client – the entire cache directory will be deleted.
 
-If you need finer‑grained control (show a list of cached resources and let users delete specific ones), use the client utilities from the entry point `@budarin/psw-plugin-opfs-serve-range/client`. The list is built from metadata in the footer (each file stores its original `url`):
+If you need finer‑grained control (show a list of cached resources and let users delete specific ones), use the client utilities from `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (see above). The list is built from metadata in the footer (each file stores its original `url`).
 
-- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — list of resources in the OPFS cache (url, size, type, lastModified);
-- `hasInOpfsCache(url: string): Promise<boolean>` — whether the URL is cached;
-- `deleteFromOpfsCache(url: string): Promise<void>` — remove a single resource by URL.
+## Plugin specifications
 
-## Plugin options
+Global cache settings (folder name, quota fraction) are set in **configureOpfs({ folderName, maxCacheFraction })**. Below are the package plugins and their options.
 
-The cache folder name and quota fraction are configured via **configureOpfs({ folderName, maxCacheFraction })**.
+### `opfsServeRange` — reads files from OPFS and serves requested byte ranges.
 
-- **opfsServeRange:** `order`, `enableLogging`, `include`, `exclude`, `rangeResponseCacheControl` – to restrict which URLs are served and how 206 responses are cached by the browser.
-- **opfsPrecache:** `urls` (array or function returning an array), `order`, `enableLogging`, `pinned` – which URLs to fetch at SW install. `pinned` is an array of glob patterns for URLs that should not be evicted (e.g., `['/assets/media/**']`).
-- **opfsRangeFromNetworkAndCache:** `order` (e.g. `-10`, after `opfsServeRange`), `include`, `exclude`, `enableLogging`, `pinned` – which requests to cache; on Range requests it streams the response immediately and optionally fills OPFS in the background. `pinned` is an array of glob patterns for URLs that should not be evicted. With `enableLogging`, a warning is logged when a file already exists in OPFS but the Range response is served from network (e.g. because of If-Range mismatch or plugin ordering).
-- **opfsBackgroundFetch:** `order`, `include`, `exclude`, `enableLogging`, `pinned` – which URLs to write into OPFS when Background Fetch completes. `pinned` is an array of glob patterns for URLs that should not be evicted. `fail`/`abort`/`click` events are logged with `enableLogging`; you can register your own plugin with the same hooks (e.g. to show UI on fail). To trigger downloads from the client, use utilities from `@budarin/pluggable-serviceworker/client/background-fetch`.
+```ts
+opfsServeRange(options?: {
+  order?: number;
+  enableLogging?: boolean;
+  include?: string[];
+  exclude?: string[];
+  rangeResponseCacheControl?: string; // Cache-Control for 206 responses (default: max-age=31536000, immutable)
+}): Plugin | undefined
+```
+
+### `opfsPrecache` — during SW install, fetches a list of URLs and writes them to OPFS.
+
+```ts
+opfsPrecache(options: {
+  urls: string[] | (() => Promise<string[]>); // array of URLs or function
+  order?: number;
+  enableLogging?: boolean;
+  pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
+}): Plugin | undefined
+```
+
+### `opfsRangeFromNetworkAndCache` — handles requests that opfsServeRange did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally fills OPFS in the background.
+
+```ts
+opfsRangeFromNetworkAndCache(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[]; // glob patterns for URLs protected from eviction
+}): Plugin | undefined
+```
+
+### `opfsBackgroundFetch` — on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by opfsServeRange.
+
+```ts
+opfsBackgroundFetch(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[]; // glob patterns for URLs protected from eviction
+}): Plugin | undefined
+```
+
+To trigger downloads from the client: `@budarin/pluggable-serviceworker/client/background-fetch`.
 
 ### Pinned resources (eviction protection)
 
@@ -242,13 +369,13 @@ Example: mark important media files as pinned so they are never evicted, while a
 
 ```typescript
 opfsPrecache({
-  urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
-  pinned: ['/assets/media/featured-video.mp4'], // featured content won't be evicted
+    urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+    pinned: ['/assets/media/featured-video.mp4'], // featured content won't be evicted
 });
 
 opfsRangeFromNetworkAndCache({
-  include: ['*.mp4', '*.webm'],
-  pinned: ['/assets/media/featured/**'], // featured media files won't be evicted
+    include: ['*.mp4', '*.webm'],
+    pinned: ['/assets/media/featured/**'], // featured media files won't be evicted
 });
 ```
 
