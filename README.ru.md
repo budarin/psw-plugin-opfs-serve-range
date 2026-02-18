@@ -155,28 +155,19 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 **Данные в сообщениях**
 
-Во всех подписках обработчик получает `MessageEvent`: в `event.data` приходит объект типа `{ type: string } & OpfsMessagePayload`:
-
-- `type` — тип сообщения (константа `OPFS_MSG_*`);
-- `url?` — URL ресурса, к которому относится событие (если применимо);
-- `size?` — размер в байтах (например, размер файла, который не влез);
-- `limit?` — лимит кеша в байтах (например, в WRITE_SKIPPED / CACHE_LIMIT_REACHED);
-- `reason?` — текст ошибки (в WRITE_FAILED).
-
-В части сообщений в `event.data` бывают и другие поля (например, `count` в EVICTION_COMPLETED).
+Обработчик получает `MessageEvent`; `event.data` имеет тип `{ type: string } & OpfsMessagePayload` плюс при необходимости поле `count`. Конкретный набор полей зависит от типа сообщения (см. таблицу ниже). Тип `OpfsMessagePayload` в пакете: `{ url?: string; size?: number; limit?: number; reason?: string }`.
 
 **Подписки на сообщения**
 
-Каждая функция принимает один аргумент — обработчик — и возвращает функцию отписки `() => void`. Вызовите её, когда подписка больше не нужна.
+Каждая функция принимает обработчик и возвращает функцию отписки `() => void`. В таблице только те подписки, **сообщения которых сервис-воркер реально отправляет** в текущей версии пакета; точный состав `event.data` — в последней колонке.
 
-| Функция | Сигнатура | Когда вызывается |
-|--------|-----------|-------------------|
-| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | При записи в OPFS браузер вернул QuotaExceeded. В `event.data`: `url`, при необходимости `size`. |
-| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Запись не начата: файл не влезает даже после попытки эвикции. В `event.data`: `url`, `size`, `limit`. |
-| `onOPFSCacheLimitReached` | `(handler: (event: MessageEvent) => void) => () => void` | Достигнут лимит кеша, начинается эвикция. В `event.data`: `limit` и др. |
-| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Эвикция завершена. В `event.data`: `count` (число удалённых файлов). |
-| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Ошибка записи (сеть, диск, удалён частичный файл). В `event.data`: `url`, `reason`. |
-| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Повторный запрос к URL из чёрного списка (ресурс не кешируем). В `event.data`: `url`. |
+| Функция | Сигнатура | Когда вызывается | Поля в `event.data` (кроме `type`) |
+|--------|-----------|-------------------|------------------------------------|
+| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | При записи в OPFS браузер вернул QuotaExceeded. | `url: string` |
+| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Запись не начата: файл не влезает даже после эвикции. | `url: string`, `size: number`, `reason: string` |
+| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Эвикция завершена. | `count: number` (число удалённых файлов) |
+| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Ошибка записи (сеть, диск, удалён частичный файл). | `url?: string`, `reason: string` |
+| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Повторный запрос к URL из чёрного списка (ресурс не кешируем). | `url: string` |
 
 **Управление кешем и типы**
 

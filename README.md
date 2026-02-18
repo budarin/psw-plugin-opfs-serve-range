@@ -165,28 +165,19 @@ Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opf
 
 **Message payload**
 
-Every subscription handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`:
-
-- `type` — message type (one of the `OPFS_MSG_*` constants);
-- `url?` — URL of the resource the event refers to (when applicable);
-- `size?` — size in bytes (e.g. file that did not fit);
-- `limit?` — cache limit in bytes (e.g. in WRITE_SKIPPED / CACHE_LIMIT_REACHED);
-- `reason?` — error text (in WRITE_FAILED).
-
-Some events send extra fields (e.g. `count` in EVICTION_COMPLETED).
+Each handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`, and some events add a `count` field. The exact set of fields depends on the message type (see table below). The package type `OpfsMessagePayload` is `{ url?: string; size?: number; limit?: number; reason?: string }`.
 
 **Message subscriptions**
 
-Each function takes one argument — the handler — and returns an unsubscribe function `() => void`. Call it when the subscription is no longer needed.
+Each function takes a handler and returns an unsubscribe function `() => void`. The table lists only subscriptions for messages **that the service worker actually sends** in the current version; the exact `event.data` fields are in the last column.
 
-| Function | Signature | When it runs |
-|----------|-----------|---------------|
-| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Browser threw QuotaExceeded while writing to OPFS. `event.data`: `url`, optionally `size`. |
-| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Write not started: file does not fit even after eviction. `event.data`: `url`, `size`, `limit`. |
-| `onOPFSCacheLimitReached` | `(handler: (event: MessageEvent) => void) => () => void` | Cache limit reached, eviction started. `event.data`: `limit`, etc. |
-| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Eviction finished. `event.data`: `count` (number of files removed). |
-| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Write error (network, disk, partial file removed). `event.data`: `url`, `reason`. |
-| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Repeat request for a blacklisted URL (resource not cached). `event.data`: `url`. |
+| Function | Signature | When it runs | Fields in `event.data` (besides `type`) |
+|----------|-----------|---------------|----------------------------------------|
+| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Browser threw QuotaExceeded while writing to OPFS. | `url: string` |
+| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Write not started: file does not fit even after eviction. | `url: string`, `size: number`, `reason: string` |
+| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Eviction finished. | `count: number` (number of files removed) |
+| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Write error (network, disk, partial file removed). | `url?: string`, `reason: string` |
+| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Repeat request for a blacklisted URL (resource not cached). | `url: string` |
 
 **Cache management and types**
 
