@@ -4,51 +4,55 @@
 
 - …
 
+## 1.1.11 - 2025-02-18
+
+- Documentation: for `listOpfsCachedResources`, one ts block (interface `OpfsCachedResource`, then signature); removed the label and second block "Each array element" / "Элемент массива". Removed subsection "Message payload" / "Данные в сообщениях" in README/README.ru (duplicated description under each subscription).
+
 ## 1.1.10 - 2025-02-18
 
-- Документация: подраздел «Управление кешем и типы» переименован в «Утилиты управления кэшем» / «Cache management utilities», добавлено вступительное предложение (где вызываются, для чего). Правила в `.cursor/rules/main.mdc`: ужесточён §1 — явно указано, что формулировка правильного варианта не считается согласием; добавлен чек-лист перед правкой (три вопроса) и правило «при сомнении — не править».
+- Documentation: subsection "Cache management and types" / "Управление кешем и типы" renamed to "Cache management utilities" / "Утилиты управления кэшем", added intro sentence (where called, purpose). Rules in `.cursor/rules/main.mdc`: tightened §1 — explicitly stated that stating the correct solution is not consent; added checklist before editing (three questions) and rule "when in doubt, do not edit".
 
 ## 1.1.9 - 2025-02-18
 
-- Документация: функции и плагины в README/README.ru оформлены как элементы списка (`- **\`name\`** — назначение`); блоки кода (сигнатуры, тип OpfsCachedResource) под пунктами списка имеют отступ 4 пробела, чтобы в превью отображаться как содержимое пункта. Правила в `.cursor/rules/docs.mdc`: раздел API reference переписан (короткие пункты, всё на английском), добавлено явное правило про отступ блоков под list item и пункт «Do not» — не оставлять блоки на нулевом отступе.
+- Documentation: functions and plugins in README/README.ru formatted as list items (`- **\`name\`** — purpose`); code blocks (signatures, OpfsCachedResource type) under list items indented by 4 spaces to render as item content in preview. Rules in `.cursor/rules/docs.mdc`: API reference section rewritten (short bullets, all in English), added explicit rule about indenting blocks under list items and "Do not" bullet — do not leave blocks at column 0.
 
 ## 1.1.8 - 2025-02-18
 
-- Документация: в README/README.ru подзаголовки `###` только для логических групп (Message subscriptions, Cache management and types, Plugin specifications); описания функций и плагинов — **`name`** — назначение, без уровня заголовка. Подписки на сообщения: один ts-блок на функцию — тип структуры сообщения (`type EventData`) и сигнатура с `MessageEvent<EventData>`; комментарии к полям — строчные (`//` в конце строки). Рядом с `listOpfsCachedResources` добавлен блок с типом `OpfsCachedResource`. Убраны маркеры списка у описаний `event.data`. Правила в `.cursor/rules/docs.mdc` обновлены под этот формат API.
+- Documentation: in README/README.ru, headings `###` only for logical groups (Message subscriptions, Cache management and types, Plugin specifications); function and plugin descriptions — **`name`** — purpose, no heading level. Message subscriptions: one ts block per function — message type (`type EventData`) and signature with `MessageEvent<EventData>`; field comments — inline (`//` at end of line). Added block with `OpfsCachedResource` type next to `listOpfsCachedResources`. Removed list markers from `event.data` descriptions. Rules in `.cursor/rules/docs.mdc` updated to this API format.
 
 ## 1.1.7 - 2025-02-18
 
-- Документация: переструктурированы README/README.ru — клиентские утилиты и подписки оформлены как спецификации (заголовок + назначение в одну строку, полная сигнатура в TypeScript, типы `event.data` в многострочных блоках с комментариями для неочевидных полей); раздел плагинов переименован в «Спецификации плагинов», описания плагинов приведены к формулировкам из вводного списка в начале файла; опции плагинов — только в блоке сигнатуры с inline-комментариями для неочевидных параметров; добавлены правила оформления API в `.cursor/rules/docs.mdc`.
+- Documentation: restructured README/README.ru — client utilities and subscriptions formatted as specifications (heading + purpose in one line, full TypeScript signature, `event.data` types in multi-line blocks with comments for non-obvious fields); plugins section renamed to "Plugin specifications" / "Спецификации плагинов", plugin descriptions aligned with wording from intro list at start of file; plugin options — only in signature block with inline comments for non-obvious parameters; added API formatting rules in `.cursor/rules/docs.mdc`.
 
 ## 1.1.6 - 2026-02-17
 
-- **Breaking:** константы типов сообщений (`OPFS_MSG_*`) приведены к совпадению имени и строкового значения: теперь значение равно имени (например, `OPFS_MSG_QUOTA_EXCEEDED = 'OPFS_MSG_QUOTA_EXCEEDED'`). Раньше в `event.data.type` приходили строки `'OPFS_QUOTA_EXCEEDED'` и т.п. — теперь приходят `'OPFS_MSG_QUOTA_EXCEEDED'`. Код, проверяющий тип по строке, нужно обновить.
-- Документация: в README/README.ru перечислены все шесть констант типов сообщений, указано, что имя совпадает со значением в `event.data.type`.
+- **Breaking:** message type constants (`OPFS_MSG_*`) aligned so name equals string value: value now equals name (e.g., `OPFS_MSG_QUOTA_EXCEEDED = 'OPFS_MSG_QUOTA_EXCEEDED'`). Previously `event.data.type` contained strings like `'OPFS_QUOTA_EXCEEDED'` — now contains `'OPFS_MSG_QUOTA_EXCEEDED'`. Code checking type by string must be updated.
+- Documentation: README/README.ru lists all six message type constants, states that name equals value in `event.data.type`.
 
 ## 1.1.5 - 2026-02-17
 
-- Документация: в разделе «Клиентские утилиты» README/README.ru — в таблице указаны точные поля `event.data` по каждому типу сообщения; убрана подписка на неотправляемое сообщение; явно указано, что в таблице только реально отправляемые сообщения. Правила проекта (.cursor/rules/main.mdc): ужесточён §1 — правки только после явного согласия, примеры того, что согласием не считается.
+- Documentation: in "Client utilities" section README/README.ru — table lists exact `event.data` fields per message type; removed subscription for non-sent message; explicitly stated that table contains only actually sent messages. Project rules (.cursor/rules/main.mdc): tightened §1 — edits only after explicit consent, examples of what does not count as consent.
 
 ## 1.1.4 - 2026-02-17
 
-- Документация: в разделе «Клиентские утилиты» README/README.ru добавлены сигнатуры подписок, описание полей `event.data` (OpfsMessagePayload), таблица по каждой функции (когда вызывается, что в payload), пример с типизацией и отпиской.
+- Documentation: in "Client utilities" section README/README.ru added subscription signatures, description of `event.data` fields (OpfsMessagePayload), table per function (when called, what in payload), example with typing and unsubscribe.
 
 ## 1.1.3 - 2026-02-17
 
-- Документация: переписан абзац сравнения с `@budarin/psw-plugin-serve-range-requests` в README/README.ru — явно указано преимущество произвольного доступа к части файла (OPFS vs последовательное чтение в Cache API) и перечислены остальные преимущества пакета (контроль квоты/эвикции, LRU, pinned, Background Fetch, precache, утилиты).
+- Documentation: rewritten comparison paragraph with `@budarin/psw-plugin-serve-range-requests` in README/README.ru — explicitly stated advantage of random access to file parts (OPFS vs sequential reading in Cache API) and listed other package advantages (quota/eviction control, LRU, pinned, Background Fetch, precache, utilities).
 
 ## 1.1.2 - 2026-02-17
 
-- Документация: исправлены примеры использования опции `pinned` в README/README.ru — заменены примеры с векторными картами на примеры с медиафайлами (видео), соответствующие контексту Range-запросов.
+- Documentation: fixed examples of `pinned` option usage in README/README.ru — replaced vector map examples with media file (video) examples, matching Range request context.
 
 ## 1.1.0 - 2026-02-17
 
-- Новое: добавлена поддержка «закреплённых» ресурсов в OPFS-кеше.
-  - В метаданные OPFS-файла добавлено поле `evictable` (по умолчанию `true`), при `false` ресурс не участвует в LRU-эвикции.
-  - В опции плагинов `opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch` добавлена опция `pinned` (массив glob-паттернов URL, которые нельзя эвиктить).
-  - LRU-логика (`computeEvictionSet`) обновлена так, чтобы никогда не удалять pinned-ресурсы.
-- Тесты: расширены юнит-тесты `computeEvictionSet` для проверки поведения с `evictable: false`.
-- Документация: README/README.ru обновлены — описаны опция `pinned`, поле `evictable` в футере метаданных и примеры конфигурации для неизвлекаемых (pinned) ресурсов.
+- New: added support for "pinned" resources in OPFS cache.
+  - Added field `evictable` to OPFS file metadata (default `true`); when `false`, resource does not participate in LRU eviction.
+  - Added option `pinned` to plugins `opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch` (array of glob patterns for URLs that cannot be evicted).
+  - LRU logic (`computeEvictionSet`) updated to never remove pinned resources.
+- Tests: extended unit tests for `computeEvictionSet` to check behavior with `evictable: false`.
+- Documentation: README/README.ru updated — described `pinned` option, `evictable` field in metadata footer, and configuration examples for non-evictable (pinned) resources.
 
 ## 1.0.6 - 2026-02-17
 

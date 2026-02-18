@@ -163,10 +163,6 @@ The response may not have a `Content-Length` header – when writing the full bo
 
 Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opfs-serve-range/client`. This section gives signatures, types, and examples; [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) only describes **when** the service worker sends messages (limits, LRU, eviction), not the API.
 
-### Message payload
-
-Each handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`, and some events add a `count` field. The package type `OpfsMessagePayload` is `{ url?: string; size?: number; limit?: number; reason?: string }`.
-
 ### Message subscriptions
 
 Each function takes a handler and returns an unsubscribe function (call it to remove the subscription). Below are the subscriptions for messages that the service worker actually sends in the current version.
@@ -240,18 +236,14 @@ Functions to list cached resources, check by URL, and remove by URL. Called from
 - **`listOpfsCachedResources`** — returns the list of cached resources.
 
     ```ts
-    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-    ```
-
-    Each array element:
-
-    ```ts
     interface OpfsCachedResource {
       url: string;
       size: number;
       type: string | undefined;
       lastModified: string | undefined;
     }
+
+    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
     ```
 
 - **`hasInOpfsCache`** — checks whether a URL is in the cache.
@@ -298,7 +290,7 @@ When each message is sent: [opfs-cache-behavior.md](https://github.com/budarin/p
 
 ### Clearing the cache and managing individual resources
 
-To wipe the whole cache (e.g. from a UI button or on logout), call `clearOpfsCache()` from the service worker or client – the entire cache directory will be deleted.
+To wipe the whole cache (e.g. from a UI button or on logout), call **clearOpfsCache()** from the service worker or client – the entire cache directory will be deleted.
 
 If you need finer‑grained control (show a list of cached resources and let users delete specific ones), use the client utilities from `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (see above). The list is built from metadata in the footer (each file stores its original `url`).
 

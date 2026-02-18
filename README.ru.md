@@ -153,10 +153,6 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`. В этом разделе — сигнатуры, типы и примеры; в [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) описано только **когда** сервис-воркер шлёт сообщения (лимиты, LRU, эвикция), не API.
 
-### Данные в сообщениях
-
-Обработчик получает `MessageEvent`; `event.data` имеет тип `{ type: string } & OpfsMessagePayload` плюс при необходимости поле `count`. Тип `OpfsMessagePayload` в пакете: `{ url?: string; size?: number; limit?: number; reason?: string }`.
-
 ### Подписки на сообщения
 
 Каждая функция принимает обработчик и возвращает функцию отписки (вызов снимает подписку). Ниже перечислены подписки, сообщения которых сервис-воркер реально отправляет в текущей версии.
@@ -230,18 +226,14 @@ type Unsubscribe = () => void;
 - **`listOpfsCachedResources`** — возвращает список закешированных ресурсов.
 
     ```ts
-    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-    ```
-
-    Элемент массива:
-
-    ```ts
     interface OpfsCachedResource {
       url: string;
       size: number;
       type: string | undefined;
       lastModified: string | undefined;
     }
+
+    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
     ```
 
 - **`hasInOpfsCache`** — проверяет наличие URL в кеше.
@@ -288,7 +280,7 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 ### Очистка кеша и управление отдельными ресурсами
 
-Когда нужно сбросить весь кеш (например, по кнопке в UI или при логауте), можно вызвать `clearOpfsCache()` из сервис-воркера или клиента — будет удалена вся папка кеша.
+Когда нужно сбросить весь кеш (например, по кнопке в UI или при логауте), можно вызвать **clearOpfsCache()** из сервис-воркера или клиента — будет удалена вся папка кеша.
 
 Если нужно работать с отдельными ресурсами (показать пользователю список сохранённых файлов и дать удалить что-то выборочно), используйте клиентские утилиты из entry point `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (см. выше). Список в кеше строится по метаданным в футере (там хранится исходный url каждого ресурса).
 
