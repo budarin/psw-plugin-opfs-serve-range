@@ -1,25 +1,25 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 - 2026-02-18
 
-- …
+- Upgrade deps `@budarin/pluggable-serviceworker` to `1.10.9`
 
 ## 1.2.0 - 2026-02-18
 
 - **Performance optimizations:**
-  - Added `getRoot()` utility that caches OPFS root handle (`navigator.storage.getDirectory()`) to avoid repeated calls on frequent requests. All plugins and utilities now use `getRoot()` internally.
-  - Optimized `urlToOpfsKey()` hex conversion: replaced `Array.from().map().join()` with a single loop using `charAt()` for better performance.
-  - Added RegExp cache in `matchesGlob()` (up to 64 patterns, FIFO eviction) to avoid recompiling glob patterns on repeated calls.
-  - Parallelized file eviction in `evictFiles()`: uses `Promise.all()` instead of sequential `await` for faster deletion of multiple files.
-  - Added shared `readMetadataFromFileFooter()` function in `opfsFormat` to eliminate code duplication; used by `opfsServeRange`, LRU logic, and client utilities.
-  - In `opfsRangeFromNetworkAndCache`: file existence check (for warning log) now runs only when `enableLogging === true`, avoiding unnecessary OPFS operations in production.
+    - Added `getRoot()` utility that caches OPFS root handle (`navigator.storage.getDirectory()`) to avoid repeated calls on frequent requests. All plugins and utilities now use `getRoot()` internally.
+    - Optimized `urlToOpfsKey()` hex conversion: replaced `Array.from().map().join()` with a single loop using `charAt()` for better performance.
+    - Added RegExp cache in `matchesGlob()` (up to 64 patterns, FIFO eviction) to avoid recompiling glob patterns on repeated calls.
+    - Parallelized file eviction in `evictFiles()`: uses `Promise.all()` instead of sequential `await` for faster deletion of multiple files.
+    - Added shared `readMetadataFromFileFooter()` function in `opfsFormat` to eliminate code duplication; used by `opfsServeRange`, LRU logic, and client utilities.
+    - In `opfsRangeFromNetworkAndCache`: file existence check (for warning log) now runs only when `enableLogging === true`, avoiding unnecessary OPFS operations in production.
 - **New exports:**
-  - `getRoot()` — cached OPFS root handle (exported from main entry point).
-  - `readMetadataFromFileFooter()` — shared footer reader (exported from main entry point).
+    - `getRoot()` — cached OPFS root handle (exported from main entry point).
+    - `readMetadataFromFileFooter()` — shared footer reader (exported from main entry point).
 - **Documentation:**
-  - Updated README/README.ru examples to use `getRoot()` instead of direct `navigator.storage.getDirectory()` calls.
-  - Added `getRoot` to the list of utilities in documentation.
-  - Updated `.cursor/rules/reference.mdc` with `getRoot()` and `readMetadataFromFileFooter()`.
+    - Updated README/README.ru examples to use `getRoot()` instead of direct `navigator.storage.getDirectory()` calls.
+    - Added `getRoot` to the list of utilities in documentation.
+    - Updated `.cursor/rules/reference.mdc` with `getRoot()` and `readMetadataFromFileFooter()`.
 
 ## 1.1.11 - 2025-02-18
 
@@ -31,7 +31,7 @@
 
 ## 1.1.9 - 2025-02-18
 
-- Documentation: functions and plugins in README/README.ru formatted as list items (`- **\`name\`** — purpose`); code blocks (signatures, OpfsCachedResource type) under list items indented by 4 spaces to render as item content in preview. Rules in `.cursor/rules/docs.mdc`: API reference section rewritten (short bullets, all in English), added explicit rule about indenting blocks under list items and "Do not" bullet — do not leave blocks at column 0.
+- Documentation: functions and plugins in README/README.ru formatted as list items (`- **\`name\`\*\* — purpose`); code blocks (signatures, OpfsCachedResource type) under list items indented by 4 spaces to render as item content in preview. Rules in `.cursor/rules/docs.mdc`: API reference section rewritten (short bullets, all in English), added explicit rule about indenting blocks under list items and "Do not" bullet — do not leave blocks at column 0.
 
 ## 1.1.8 - 2025-02-18
 
@@ -65,9 +65,9 @@
 ## 1.1.0 - 2026-02-17
 
 - New: added support for "pinned" resources in OPFS cache.
-  - Added field `evictable` to OPFS file metadata (default `true`); when `false`, resource does not participate in LRU eviction.
-  - Added option `pinned` to plugins `opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch` (array of glob patterns for URLs that cannot be evicted).
-  - LRU logic (`computeEvictionSet`) updated to never remove pinned resources.
+    - Added field `evictable` to OPFS file metadata (default `true`); when `false`, resource does not participate in LRU eviction.
+    - Added option `pinned` to plugins `opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch` (array of glob patterns for URLs that cannot be evicted).
+    - LRU logic (`computeEvictionSet`) updated to never remove pinned resources.
 - Tests: extended unit tests for `computeEvictionSet` to check behavior with `evictable: false`.
 - Documentation: README/README.ru updated — described `pinned` option, `evictable` field in metadata footer, and configuration examples for non-evictable (pinned) resources.
 
