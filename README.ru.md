@@ -153,11 +153,11 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`. В этом разделе — сигнатуры, типы и примеры; в [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) описано только **когда** сервис-воркер шлёт сообщения (лимиты, LRU, эвикция), не API.
 
-**Данные в сообщениях**
+### Данные в сообщениях
 
 Обработчик получает `MessageEvent`; `event.data` имеет тип `{ type: string } & OpfsMessagePayload` плюс при необходимости поле `count`. Тип `OpfsMessagePayload` в пакете: `{ url?: string; size?: number; limit?: number; reason?: string }`.
 
-**Подписки на сообщения**
+### Подписки на сообщения
 
 Каждая функция принимает обработчик и возвращает функцию отписки (вызов снимает подписку). Ниже перечислены подписки, сообщения которых сервис-воркер реально отправляет в текущей версии.
 
@@ -165,98 +165,90 @@ await writeToOpfs(dir, key, response.body, metadata);
 type Unsubscribe = () => void;
 ```
 
-### `onOPFSQuotaExceeded` — подписка на уведомление об исчерпании квоты при записи в OPFS.
+**`onOPFSQuotaExceeded`** — подписка на уведомление об исчерпании квоты при записи в OPFS.
 
 ```ts
-onOPFSQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+type EventData = {
+  type: string;
+  url: string;
+};
+
+onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
 ```
 
-- `event.data`:
-    ```ts
-    {
-        type: string;
-        url: string;
-    }
-    ```
-
-### `onOPFSWriteSkipped` — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
+**`onOPFSWriteSkipped`** — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
 
 ```ts
-onOPFSWriteSkipped(handler: (event: MessageEvent) => void): Unsubscribe
+type EventData = {
+  type: string;
+  url: string;
+  size: number; // Размер файла в байтах
+  reason: string; // Причина (почему запись не начата)
+};
+
+onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
 ```
 
-- `event.data`:
-    ```ts
-    {
-        type: string;
-        url: string;
-        /** Размер файла в байтах */
-        size: number;
-        /** Причина (почему запись не начата) */
-        reason: string;
-    }
-    ```
-
-### `onOPFSEvictionCompleted` — подписка на уведомление о завершении эвикции.
+**`onOPFSEvictionCompleted`** — подписка на уведомление о завершении эвикции.
 
 ```ts
-onOPFSEvictionCompleted(handler: (event: MessageEvent) => void): Unsubscribe
+type EventData = {
+  type: string;
+  count: number; // Число удалённых при эвикции файлов
+};
+
+onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
 ```
 
-- `event.data`:
-    ```ts
-    {
-        type: string;
-        /** Число удалённых при эвикции файлов */
-        count: number;
-    }
-    ```
-
-### `onOPFSWriteFailed` — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
+**`onOPFSWriteFailed`** — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
 
 ```ts
-onOPFSWriteFailed(handler: (event: MessageEvent) => void): Unsubscribe
+type EventData = {
+  type: string;
+  url?: string;
+  reason: string; // Причина ошибки записи
+};
+
+onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
 ```
 
-- `event.data`:
-    ```ts
-    {
-      type: string;
-      url?: string;
-      /** Причина ошибки записи */
-      reason: string;
-    }
-    ```
-
-### `onOPFSSkipQuotaExceeded` — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
+**`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
 
 ```ts
-onOPFSSkipQuotaExceeded(handler: (event: MessageEvent) => void): Unsubscribe
+type EventData = {
+  type: string;
+  url: string;
+};
+
+onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
 ```
 
-- `event.data`:
-    ```ts
-    {
-        type: string;
-        url: string;
-    }
-    ```
+### Управление кешем и типы
 
-**Управление кешем и типы**
-
-### `listOpfsCachedResources` — возвращает список закешированных ресурсов. Элемент: `{ url, size, type?, lastModified? }`.
+**`listOpfsCachedResources`** — возвращает список закешированных ресурсов.
 
 ```ts
 listOpfsCachedResources(): Promise<OpfsCachedResource[]>
 ```
 
-### `hasInOpfsCache` — проверяет наличие URL в кеше.
+Элемент массива:
+
+```ts
+interface OpfsCachedResource {
+  url: string;
+  size: number;
+  type: string | undefined;
+  lastModified: string | undefined;
+}
+```
+
+**`hasInOpfsCache`** — проверяет наличие URL в кеше.
 
 ```ts
 hasInOpfsCache(url: string): Promise<boolean>
 ```
 
-### `deleteFromOpfsCache` — удаляет ресурс по URL из кеша.
+**`deleteFromOpfsCache`** — удаляет ресурс по URL из кеша.
 
 ```ts
 deleteFromOpfsCache(url: string): Promise<void>
@@ -302,7 +294,7 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 Общая настройка кеша (имя папки, доля квоты) задаётся в **configureOpfs({ folderName, maxCacheFraction })**. Ниже — плагины пакета и их опции.
 
-### `opfsServeRange` — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
+**`opfsServeRange`** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
 
 ```ts
 opfsServeRange(options?: {
@@ -314,7 +306,7 @@ opfsServeRange(options?: {
 }): Plugin | undefined
 ```
 
-### `opfsPrecache` — при установке сервис-воркера загружает список URL и записывает их в OPFS.
+**`opfsPrecache`** — при установке сервис-воркера загружает список URL и записывает их в OPFS.
 
 ```ts
 opfsPrecache(options: {
@@ -325,7 +317,7 @@ opfsPrecache(options: {
 }): Plugin | undefined
 ```
 
-### `opfsRangeFromNetworkAndCache` — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
+**`opfsRangeFromNetworkAndCache`** — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
 
 ```ts
 opfsRangeFromNetworkAndCache(options?: {
@@ -337,7 +329,7 @@ opfsRangeFromNetworkAndCache(options?: {
 }): Plugin | undefined
 ```
 
-### `opfsBackgroundFetch` — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
+**`opfsBackgroundFetch`** — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
 
 ```ts
 opfsBackgroundFetch(options?: {
