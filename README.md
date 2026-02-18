@@ -22,7 +22,7 @@ Unlike `@budarin/psw-plugin-serve-range-requests`, which uses the Cache API: cac
 - **opfsPrecache** – during SW install, fetches a list of URLs and writes them to OPFS. Downloading large files at install time may take a long time – the UI should either warn users to wait or avoid putting huge files into precache. It is also important to note that if OPFS runs out of space while writing during the `install` phase and the operation fails, the whole service worker install fails (the SW is not installed). Use `opfsPrecache` only for resources that are guaranteed to fit even on small, partially filled devices; use `opfsRangeFromNetworkAndCache` or background downloads for heavy files.
 - **opfsRangeFromNetworkAndCache** – handles requests that `opfsServeRange` did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally starts a full background download into OPFS; only fully downloaded files are cached. If the tab or browser is closed or the network drops, the download is aborted; the next request for the same URL starts a new full download (which may be slow or expensive for large files). If you need downloads that survive tab or browser closes, or your files are very large, use the Background Fetch API utilities from `@budarin/pluggable-serviceworker`.
 - **opfsBackgroundFetch** – on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by `opfsServeRange`.
-- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **isOpfsAvailable** – low‑level utilities for writing your own OPFS plugins; **isOpfsAvailable()** provides a synchronous check for OPFS support.
+- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **getRoot**, **isOpfsAvailable** – low‑level utilities for writing your own OPFS plugins; **getRoot()** returns a cached OPFS root (avoids repeated navigator.storage.getDirectory calls); **isOpfsAvailable()** provides a synchronous check for OPFS support.
 
 In environments without OPFS support, plugin factories return `undefined`.
 
@@ -140,17 +140,18 @@ Metadata example (JSON footer): `url`, `size`, `type`, `etag`, `lastModified`, `
 
 ## Writing your own OPFS plugin
 
-If you need to write into OPFS following the same format as the built‑in plugins, you can use **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Example:
+If you need to write into OPFS following the same format as the built‑in plugins, you can use **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Example:
 
 ```typescript
 import {
+    getRoot,
     getOpfsDir,
     urlToOpfsKey,
     writeToOpfs,
     metadataFromResponse,
 } from '@budarin/psw-plugin-opfs-serve-range';
 
-const root = await navigator.storage.getDirectory();
+const root = await getRoot();
 const dir = await getOpfsDir(root, true);
 const key = await urlToOpfsKey(url);
 const metadata = metadataFromResponse(response, url);

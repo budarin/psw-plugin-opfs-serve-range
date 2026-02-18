@@ -4,6 +4,23 @@
 
 - …
 
+## 1.2.0 - 2026-02-18
+
+- **Performance optimizations:**
+  - Added `getRoot()` utility that caches OPFS root handle (`navigator.storage.getDirectory()`) to avoid repeated calls on frequent requests. All plugins and utilities now use `getRoot()` internally.
+  - Optimized `urlToOpfsKey()` hex conversion: replaced `Array.from().map().join()` with a single loop using `charAt()` for better performance.
+  - Added RegExp cache in `matchesGlob()` (up to 64 patterns, FIFO eviction) to avoid recompiling glob patterns on repeated calls.
+  - Parallelized file eviction in `evictFiles()`: uses `Promise.all()` instead of sequential `await` for faster deletion of multiple files.
+  - Added shared `readMetadataFromFileFooter()` function in `opfsFormat` to eliminate code duplication; used by `opfsServeRange`, LRU logic, and client utilities.
+  - In `opfsRangeFromNetworkAndCache`: file existence check (for warning log) now runs only when `enableLogging === true`, avoiding unnecessary OPFS operations in production.
+- **New exports:**
+  - `getRoot()` — cached OPFS root handle (exported from main entry point).
+  - `readMetadataFromFileFooter()` — shared footer reader (exported from main entry point).
+- **Documentation:**
+  - Updated README/README.ru examples to use `getRoot()` instead of direct `navigator.storage.getDirectory()` calls.
+  - Added `getRoot` to the list of utilities in documentation.
+  - Updated `.cursor/rules/reference.mdc` with `getRoot()` and `readMetadataFromFileFooter()`.
+
 ## 1.1.11 - 2025-02-18
 
 - Documentation: for `listOpfsCachedResources`, one ts block (interface `OpfsCachedResource`, then signature); removed the label and second block "Each array element" / "Элемент массива". Removed subsection "Message payload" / "Данные в сообщениях" in README/README.ru (duplicated description under each subscription).

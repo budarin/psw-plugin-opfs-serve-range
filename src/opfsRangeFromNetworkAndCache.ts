@@ -7,7 +7,7 @@
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
-import { getOpfsDir, urlToOpfsKey } from './index.js';
+import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
 import {
     parseRangeHeader,
     build206Response,
@@ -85,7 +85,7 @@ async function backgroundFullFetchToOpfs(
         const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
         const metadata = { ...baseMetadata, evictable };
         const key = await urlToOpfsKey(url);
-        const root = await navigator.storage.getDirectory();
+        const root = await getRoot();
         const dir = await getOpfsDir(root, true);
         await writeToOpfs(dir, key, response.body, metadata, {
             url,
@@ -164,7 +164,7 @@ export function opfsRangeFromNetworkAndCache(
                     const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
                     const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
-                    const root = await navigator.storage.getDirectory();
+                    const root = await getRoot();
                     const dir = await getOpfsDir(root, true);
                     const [branch1, branch2] = response.body.tee();
                     writeToOpfs(dir, key, branch2, metadata, {
@@ -193,18 +193,20 @@ export function opfsRangeFromNetworkAndCache(
                 }
             }
 
-            // Запрос с Range: если файл уже в OPFS — warn; затем fetch и отдаём ответ.
+            // Запрос с Range: при enableLogging проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
             try {
-                const key = await urlToOpfsKey(url);
-                const root = await navigator.storage.getDirectory();
-                try {
-                    const dir = await getOpfsDir(root, false);
-                    await dir.getFileHandle(key);
-                    logger.warn(
-                        `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
-                    );
-                } catch {
-                    // Файла нет в OPFS — нормально, идём в сеть.
+                if (enableLogging) {
+                    try {
+                        const key = await urlToOpfsKey(url);
+                        const root = await getRoot();
+                        const dir = await getOpfsDir(root, false);
+                        await dir.getFileHandle(key);
+                        logger.warn(
+                            `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
+                        );
+                    } catch {
+                        // Файла нет в OPFS — нормально, идём в сеть.
+                    }
                 }
 
                 const response = await fetch(request);
@@ -249,7 +251,7 @@ export function opfsRangeFromNetworkAndCache(
                         const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
                         const metadata = { ...baseMetadata, evictable };
                         const key = await urlToOpfsKey(url);
-                        const root = await navigator.storage.getDirectory();
+                        const root = await getRoot();
                         const dir = await getOpfsDir(root, true);
                         const [branch1, branch2] = response.body.tee();
                         writeToOpfs(dir, key, branch2, metadata, {

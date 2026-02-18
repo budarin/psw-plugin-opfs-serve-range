@@ -4,7 +4,7 @@
  */
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
-import { getOpfsDir, urlToOpfsKey } from './index.js';
+import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
 import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 
@@ -50,7 +50,7 @@ export function opfsPrecache(
                 return;
             }
 
-            const root = await navigator.storage.getDirectory();
+            const root = await getRoot();
             const dir = await getOpfsDir(root, true);
 
             for (const url of list) {

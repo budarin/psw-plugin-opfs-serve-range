@@ -5,7 +5,7 @@
 
 import type { Plugin } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
-import { getOpfsDir, urlToOpfsKey } from './index.js';
+import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
 import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isBlacklisted } from './opfsLru.js';
@@ -53,7 +53,7 @@ export function opfsBackgroundFetch(
         order,
 
         async backgroundfetchsuccess(event, logger): Promise<void> {
-            const root = await navigator.storage.getDirectory();
+            const root = await getRoot();
             const dir = await getOpfsDir(root, true);
             const records = await event.registration.matchAll();
 

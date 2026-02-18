@@ -12,7 +12,7 @@
 - **opfsPrecache** — при установке сервис‑воркера загружает список URL и записывает их в OPFS. Загрузка объёмных файлов на стадии установки может занять много времени, поэтому в UI имеет смысл явно сообщать пользователю, что идёт инициализация, либо не включать большие файлы в precache. Отдельно важно учитывать, что если на стадии `install` при записи в OPFS не хватит места и операция завершится ошибкой, весь сервис‑воркер не будет установлен (install не завершится успешно). Через opfsPrecache стоит грузить только те ресурсы, которые гарантированно помещаются даже на маленьких и уже частично заполненных устройствах; тяжёлые файлы лучше выносить в отдельные сценарии фоновой или отложенной загрузки с помощью плагина `opfsRangeFromNetworkAndCache` или Background Fetch.
 - **opfsRangeFromNetworkAndCache** — подхватывает запросы, которые `opfsServeRange` не обслужил (ресурс ещё не в кеше): идёт в сеть, сразу отдаёт ответ клиенту и при необходимости запускает параллельно полную загрузку файла в OPFS; в кеш попадают только полностью загруженные файлы. При закрытии вкладки, браузера или обрыве сети загрузка прерывается — при следующем запросе к тому же URL загрузка начнётся заново. Для очень больших файлов и платных каналов стоит особенно внимательно отнестись к таким сценариям; если нужна загрузка, переживающая закрытие вкладки или браузера, используйте `Background Fetch API` и плагины из `@budarin/pluggable-serviceworker`.
 - **opfsBackgroundFetch** — при успешном завершении загрузки при помощи `Background Fetch API` записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает `opfsServeRange`.
-- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **isOpfsAvailable** — утилиты, которые могут понадобиться для написания собственных плагинов записи в OPFS; **isOpfsAvailable()** — утилита для синхронной проверки наличия OPFS.
+- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **getRoot**, **isOpfsAvailable** — утилиты, которые могут понадобиться для написания собственных плагинов записи в OPFS; **getRoot()** — кешированный корень OPFS (избегает повторных вызовов navigator.storage.getDirectory); **isOpfsAvailable()** — утилита для синхронной проверки наличия OPFS.
 
 В средах без поддержки OPFS фабрики плагинов возвращают `undefined`.
 
@@ -130,17 +130,18 @@ initServiceWorker(
 
 ## Свой плагин записи в OPFS
 
-Если нужно записывать в OPFS по своей логике (тот же формат, что и у плагинов пакета), могут понадобиться **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Пример:
+Если нужно записывать в OPFS по своей логике (тот же формат, что и у плагинов пакета), могут понадобиться **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Пример:
 
 ```typescript
 import {
+    getRoot,
     getOpfsDir,
     urlToOpfsKey,
     writeToOpfs,
     metadataFromResponse,
 } from '@budarin/psw-plugin-opfs-serve-range';
 
-const root = await navigator.storage.getDirectory();
+const root = await getRoot();
 const dir = await getOpfsDir(root, true);
 const key = await urlToOpfsKey(url);
 const metadata = metadataFromResponse(response, url);

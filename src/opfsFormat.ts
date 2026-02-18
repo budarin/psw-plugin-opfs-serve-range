@@ -31,3 +31,38 @@ export interface OpfsMetadata {
     /** Можно ли эвиктить ресурс (по умолчанию true). false = pinned, не удалять. */
     evictable?: boolean;
 }
+
+/**
+ * Читает метаданные из футера файла: последние 4 байта = длина JSON (uint32 LE), перед ними — JSON.
+ * Общая реализация для opfsServeRange, opfsLru и клиента.
+ */
+export async function readMetadataFromFileFooter(
+    file: File
+): Promise<{ metadata: OpfsMetadata | undefined; bodySize: number }> {
+    const size = file.size;
+    if (size < OPFS_META_FOOTER_LENGTH) {
+        return { metadata: undefined, bodySize: size };
+    }
+    const footerBlob = file.slice(size - OPFS_META_FOOTER_LENGTH, size);
+    const footerBuf = await footerBlob.arrayBuffer();
+    const metaLen = new DataView(footerBuf).getUint32(0, true);
+    if (
+        metaLen === 0 ||
+        metaLen > MAX_META_JSON_BYTES ||
+        metaLen > size - OPFS_META_FOOTER_LENGTH
+    ) {
+        return { metadata: undefined, bodySize: size };
+    }
+    try {
+        const jsonBlob = file.slice(
+            size - OPFS_META_FOOTER_LENGTH - metaLen,
+            size - OPFS_META_FOOTER_LENGTH
+        );
+        const text = await jsonBlob.text();
+        const metadata = JSON.parse(text) as OpfsMetadata;
+        const bodySize = size - OPFS_META_FOOTER_LENGTH - metaLen;
+        return { metadata, bodySize };
+    } catch {
+        return { metadata: undefined, bodySize: size };
+    }
+}

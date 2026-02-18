@@ -12,12 +12,8 @@ import {
     OPFS_MSG_WRITE_FAILED,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
 } from '../opfsMessages.js';
-import { getOpfsDir } from '../opfsUtil.js';
-import {
-    MAX_META_JSON_BYTES,
-    OPFS_META_FOOTER_LENGTH,
-    type OpfsMetadata,
-} from '../opfsFormat.js';
+import { getOpfsDir, getRoot } from '../opfsUtil.js';
+import { readMetadataFromFileFooter, type OpfsMetadata } from '../opfsFormat.js';
 import { urlToOpfsKey } from '../index.js';
 
 export {
@@ -94,7 +90,7 @@ async function getOpfsCacheDirOrUndefined(): Promise<FileSystemDirectoryHandle |
     ) {
         return undefined;
     }
-    const root = await navigator.storage.getDirectory();
+    const root = await getRoot();
     try {
         return await getOpfsDir(root, false);
     } catch {
@@ -105,31 +101,8 @@ async function getOpfsCacheDirOrUndefined(): Promise<FileSystemDirectoryHandle |
 async function readMetadataFromFile(
     file: File
 ): Promise<OpfsMetadata | undefined> {
-    const size = file.size;
-    if (size < OPFS_META_FOOTER_LENGTH) {
-        return undefined;
-    }
-    const footerBlob = file.slice(size - OPFS_META_FOOTER_LENGTH, size);
-    const footerBuf = await footerBlob.arrayBuffer();
-    const metaLen = new DataView(footerBuf).getUint32(0, true);
-    if (
-        metaLen === 0 ||
-        metaLen > MAX_META_JSON_BYTES ||
-        metaLen > size - OPFS_META_FOOTER_LENGTH
-    ) {
-        return undefined;
-    }
-    try {
-        const jsonBlob = file.slice(
-            size - OPFS_META_FOOTER_LENGTH - metaLen,
-            size - OPFS_META_FOOTER_LENGTH
-        );
-        const text = await jsonBlob.text();
-        const metadata = JSON.parse(text) as OpfsMetadata;
-        return metadata;
-    } catch {
-        return undefined;
-    }
+    const { metadata } = await readMetadataFromFileFooter(file);
+    return metadata ?? undefined;
 }
 
 export async function listOpfsCachedResources(): Promise<OpfsCachedResource[]> {

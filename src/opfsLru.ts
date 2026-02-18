@@ -3,11 +3,7 @@
  * Без индексного файла — данные из метаданных в футере каждого файла.
  */
 
-import {
-    OPFS_META_FOOTER_LENGTH,
-    MAX_META_JSON_BYTES,
-    type OpfsMetadata,
-} from './opfsFormat.js';
+import { readMetadataFromFileFooter } from './opfsFormat.js';
 import { getMaxCacheFraction } from './opfsUtil.js';
 
 export interface CacheFileEntry {
@@ -56,40 +52,17 @@ export function getCacheLimit(estimate: StorageEstimate): number {
     return Math.max(0, Math.min(byFraction, byAvailable));
 }
 
-/**
- * Читает из футера файла полные метаданные (включая evictable и lastAccessed).
- * Возвращает размер файла на диске (file.size), lastAccessed (0 если нет) и evictable (true по умолчанию).
- */
 async function readMetaFromFile(file: File): Promise<{ size: number; lastAccessed: number; evictable: boolean }> {
+    const { metadata } = await readMetadataFromFileFooter(file);
     const size = file.size;
-    if (size < OPFS_META_FOOTER_LENGTH) {
+    if (!metadata) {
         return { size, lastAccessed: 0, evictable: true };
     }
-    const footerBlob = file.slice(size - OPFS_META_FOOTER_LENGTH, size);
-    const footerBuf = await footerBlob.arrayBuffer();
-    const metaLen = new DataView(footerBuf).getUint32(0, true);
-    if (
-        metaLen === 0 ||
-        metaLen > MAX_META_JSON_BYTES ||
-        metaLen > size - OPFS_META_FOOTER_LENGTH
-    ) {
-        return { size, lastAccessed: 0, evictable: true };
-    }
-    try {
-        const jsonBlob = file.slice(
-            size - OPFS_META_FOOTER_LENGTH - metaLen,
-            size - OPFS_META_FOOTER_LENGTH
-        );
-        const text = await jsonBlob.text();
-        const metadata = JSON.parse(text) as OpfsMetadata;
-        return {
-            size,
-            lastAccessed: metadata.lastAccessed ?? 0,
-            evictable: metadata.evictable !== false,
-        };
-    } catch {
-        return { size, lastAccessed: 0, evictable: true };
-    }
+    return {
+        size,
+        lastAccessed: metadata.lastAccessed ?? 0,
+        evictable: metadata.evictable !== false,
+    };
 }
 
 /**
@@ -150,13 +123,13 @@ export async function evictFiles(
     dir: FileSystemDirectoryHandle,
     keys: string[]
 ): Promise<void> {
-    for (const key of keys) {
-        try {
-            await dir.removeEntry(key);
-        } catch {
-            // уже удалён или недоступен
-        }
-    }
+    await Promise.all(
+        keys.map((key) =>
+            dir.removeEntry(key).catch(() => {
+                // уже удалён или недоступен
+            })
+        )
+    );
 }
 
 export type EnsureSpaceResult =

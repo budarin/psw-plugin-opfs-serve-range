@@ -13,9 +13,10 @@ import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-type
 import {
     OPFS_META_FOOTER_LENGTH,
     MAX_META_JSON_BYTES,
+    readMetadataFromFileFooter as readFooter,
     type OpfsMetadata,
 } from './opfsFormat.js';
-import { getOpfsDir, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { getOpfsDir, getRoot, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { parseRangeHeader, build206Response } from './opfsRangeUtil.js';
 
 export {
@@ -24,11 +25,13 @@ export {
     KILOBYTE,
     MEGABYTE,
     GIGABYTE,
+    readMetadataFromFileFooter,
     type OpfsMetadata,
 } from './opfsFormat.js';
 
 export {
     getOpfsDir,
+    getRoot,
     clearOpfsCache,
     configureOpfs,
     isOpfsAvailable,
@@ -88,9 +91,13 @@ export async function urlToOpfsKey(url: string): Promise<string> {
     }
     const bytes = new TextEncoder().encode(url);
     const hash = await crypto.subtle.digest('SHA-256', bytes);
-    const key = Array.from(new Uint8Array(hash))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
+    const hex = '0123456789abcdef';
+    const arr = new Uint8Array(hash);
+    let key = '';
+    for (let i = 0; i < arr.length; i++) {
+        const b = arr[i]!;
+        key += hex.charAt(b >> 4) + hex.charAt(b & 0x0f);
+    }
     urlToKeyCache.set(url, key);
     return key;
 }
@@ -121,40 +128,6 @@ function ifRangeMatches(
     return false;
 }
 
-/**
- * Читает метаданные из конца файла: последние 4 байта = длина JSON (uint32 LE), перед ними — JSON.
- * Если футер отсутствует или невалиден, возвращаем bodySize = file.size, metadata = undefined.
- */
-async function getMetadataFromFileFooter(
-    file: File
-): Promise<{ metadata: OpfsMetadata | undefined; bodySize: number }> {
-    const size = file.size;
-    if (size < OPFS_META_FOOTER_LENGTH) {
-        return { metadata: undefined, bodySize: size };
-    }
-    const footerBlob = file.slice(size - OPFS_META_FOOTER_LENGTH, size);
-    const footerBuf = await footerBlob.arrayBuffer();
-    const metaLen = new DataView(footerBuf).getUint32(0, true);
-    if (
-        metaLen === 0 ||
-        metaLen > MAX_META_JSON_BYTES ||
-        metaLen > size - OPFS_META_FOOTER_LENGTH
-    ) {
-        return { metadata: undefined, bodySize: size };
-    }
-    try {
-        const jsonBlob = file.slice(
-            size - OPFS_META_FOOTER_LENGTH - metaLen,
-            size - OPFS_META_FOOTER_LENGTH
-        );
-        const text = await jsonBlob.text();
-        const metadata = JSON.parse(text) as OpfsMetadata;
-        const bodySize = size - OPFS_META_FOOTER_LENGTH - metaLen;
-        return { metadata, bodySize };
-    } catch {
-        return { metadata: undefined, bodySize: size };
-    }
-}
 
 /**
  * Обновляет lastAccessed в футере файла (в фоне, параллельно с отдачей ответа).
@@ -241,7 +214,7 @@ export function opfsServeRange(
                 return;
             }
 
-            const root = await navigator.storage.getDirectory();
+            const root = await getRoot();
             let dir: FileSystemDirectoryHandle;
             try {
                 dir = await getOpfsDir(root, false);
@@ -265,8 +238,7 @@ export function opfsServeRange(
             }
 
             const file = await fileHandle.getFile();
-            const { metadata, bodySize } =
-                await getMetadataFromFileFooter(file);
+            const { metadata, bodySize } = await readFooter(file);
             const size = metadata?.size ?? bodySize;
             const type = metadata?.type ?? MIME_APPLICATION_OCTET_STREAM;
 
