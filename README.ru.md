@@ -151,29 +151,68 @@ await writeToOpfs(dir, key, response.body, metadata);
 
 ## Клиентские утилиты
 
-Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`.
+Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`. В этом разделе — сигнатуры, типы и примеры; в [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) описано только **когда** сервис-воркер шлёт сообщения (лимиты, LRU, эвикция), не API.
+
+**Данные в сообщениях**
+
+Во всех подписках обработчик получает `MessageEvent`: в `event.data` приходит объект типа `{ type: string } & OpfsMessagePayload`:
+
+- `type` — тип сообщения (константа `OPFS_MSG_*`);
+- `url?` — URL ресурса, к которому относится событие (если применимо);
+- `size?` — размер в байтах (например, размер файла, который не влез);
+- `limit?` — лимит кеша в байтах (например, в WRITE_SKIPPED / CACHE_LIMIT_REACHED);
+- `reason?` — текст ошибки (в WRITE_FAILED).
+
+В части сообщений в `event.data` бывают и другие поля (например, `count` в EVICTION_COMPLETED).
+
+**Подписки на сообщения**
+
+Каждая функция принимает один аргумент — обработчик — и возвращает функцию отписки `() => void`. Вызовите её, когда подписка больше не нужна.
+
+| Функция | Сигнатура | Когда вызывается |
+|--------|-----------|-------------------|
+| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | При записи в OPFS браузер вернул QuotaExceeded. В `event.data`: `url`, при необходимости `size`. |
+| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Запись не начата: файл не влезает даже после попытки эвикции. В `event.data`: `url`, `size`, `limit`. |
+| `onOPFSCacheLimitReached` | `(handler: (event: MessageEvent) => void) => () => void` | Достигнут лимит кеша, начинается эвикция. В `event.data`: `limit` и др. |
+| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Эвикция завершена. В `event.data`: `count` (число удалённых файлов). |
+| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Ошибка записи (сеть, диск, удалён частичный файл). В `event.data`: `url`, `reason`. |
+| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Повторный запрос к URL из чёрного списка (ресурс не кешируем). В `event.data`: `url`. |
+
+**Управление кешем и типы**
+
+- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — список закешированных ресурсов; элемент: `{ url, size, type?, lastModified? }`.
+- `hasInOpfsCache(url: string): Promise<boolean>` — есть ли URL в кеше.
+- `deleteFromOpfsCache(url: string): Promise<void>` — удалить ресурс по URL из кеша.
+
+Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета; константы типов сообщений — `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE` и т.д.
 
 ### Оповещения вкладок о квоте и лимитах
 
-Сервис-воркер отправляет сообщения клиентам при исчерпании квоты, отказе в записи, эвикции и т.д. Подписаться можно через типизированные обработчики из пакета (entry point `@budarin/psw-plugin-opfs-serve-range/client`):
+Пример: подписаться на события и показать пользователю, какой ресурс не удалось закешировать; при размонтировании компонента — отписаться.
 
 ```typescript
 import {
     onOPFSQuotaExceeded,
-    onOPFSWriteSkipped,
     onOPFSSkipQuotaExceeded,
+    type OpfsMessagePayload,
 } from '@budarin/psw-plugin-opfs-serve-range/client';
 
-onOPFSQuotaExceeded((event) => {
-    console.warn('OPFS: quota exceeded', event.data?.url);
+const unsubQuota = onOPFSQuotaExceeded((event: MessageEvent) => {
+    const data = event.data as { type: string } & OpfsMessagePayload;
+    console.warn('OPFS: квота исчерпана', data.url);
+    // например: showToast(`Не удалось сохранить: ${data.url}`);
 });
 
-onOPFSSkipQuotaExceeded((event) => {
-    console.warn('OPFS: resource not cached (quota)', event.data?.url);
+const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
+    const data = event.data as { type: string } & OpfsMessagePayload;
+    console.warn('OPFS: ресурс не кешируется (лимит)', data.url);
 });
+
+// когда подписка не нужна:
+// unsubQuota(); unsubSkip();
 ```
 
-Подробнее — в [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) и в разделе **«Клиентские утилиты»** этого README.
+В каких ситуациях шлются сообщения — [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
 ### Очистка кеша и управление отдельными ресурсами
 
@@ -183,11 +222,9 @@ onOPFSSkipQuotaExceeded((event) => {
 
 Основные сценарии:
 
-- получить список ресурсов в OPFS-кеше с размерами и типами — `listOpfsCachedResources()`;
-- проверить, есть ли конкретный URL в кеше — `hasInOpfsCache`(url);
-- удалить один ресурс по URL — `deleteFromOpfsCache`(url).
-
-Эти утилиты и подписки на события описаны подробнее в разделе **«Клиентские утилиты»** и в типах пакета.
+- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — список ресурсов в OPFS-кеше (url, size, type, lastModified);
+- `hasInOpfsCache(url: string): Promise<boolean>` — есть ли URL в кеше;
+- `deleteFromOpfsCache(url: string): Promise<void>` — удалить один ресурс по URL.
 
 ## Опции плагинов
 

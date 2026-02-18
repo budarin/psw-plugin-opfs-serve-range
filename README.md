@@ -161,29 +161,68 @@ The response may not have a `Content-Length` header – when writing the full bo
 
 ## Client utilities
 
-Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opfs-serve-range/client`.
+Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opfs-serve-range/client`. This section gives signatures, types, and examples; [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) only describes **when** the service worker sends messages (limits, LRU, eviction), not the API.
+
+**Message payload**
+
+Every subscription handler receives a `MessageEvent`; `event.data` is `{ type: string } & OpfsMessagePayload`:
+
+- `type` — message type (one of the `OPFS_MSG_*` constants);
+- `url?` — URL of the resource the event refers to (when applicable);
+- `size?` — size in bytes (e.g. file that did not fit);
+- `limit?` — cache limit in bytes (e.g. in WRITE_SKIPPED / CACHE_LIMIT_REACHED);
+- `reason?` — error text (in WRITE_FAILED).
+
+Some events send extra fields (e.g. `count` in EVICTION_COMPLETED).
+
+**Message subscriptions**
+
+Each function takes one argument — the handler — and returns an unsubscribe function `() => void`. Call it when the subscription is no longer needed.
+
+| Function | Signature | When it runs |
+|----------|-----------|---------------|
+| `onOPFSQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Browser threw QuotaExceeded while writing to OPFS. `event.data`: `url`, optionally `size`. |
+| `onOPFSWriteSkipped` | `(handler: (event: MessageEvent) => void) => () => void` | Write not started: file does not fit even after eviction. `event.data`: `url`, `size`, `limit`. |
+| `onOPFSCacheLimitReached` | `(handler: (event: MessageEvent) => void) => () => void` | Cache limit reached, eviction started. `event.data`: `limit`, etc. |
+| `onOPFSEvictionCompleted` | `(handler: (event: MessageEvent) => void) => () => void` | Eviction finished. `event.data`: `count` (number of files removed). |
+| `onOPFSWriteFailed` | `(handler: (event: MessageEvent) => void) => () => void` | Write error (network, disk, partial file removed). `event.data`: `url`, `reason`. |
+| `onOPFSSkipQuotaExceeded` | `(handler: (event: MessageEvent) => void) => () => void` | Repeat request for a blacklisted URL (resource not cached). `event.data`: `url`. |
+
+**Cache management and types**
+
+- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — list of cached resources; each item: `{ url, size, type?, lastModified? }`.
+- `hasInOpfsCache(url: string): Promise<boolean>` — whether the URL is in the cache.
+- `deleteFromOpfsCache(url: string): Promise<void>` — remove resource by URL from the cache.
+
+Types `OpfsMessagePayload` and `OpfsCachedResource` are exported; message type constants are `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, etc.
 
 ### Tab notifications about quota and limits
 
-The service worker sends messages to clients when quota is exceeded, writes are refused, eviction happens, etc. You can subscribe using typed handlers from the client entry point `@budarin/psw-plugin-opfs-serve-range/client`:
+Example: subscribe to events and show the user which resource failed to cache; unsubscribe when the component unmounts.
 
 ```typescript
 import {
     onOPFSQuotaExceeded,
-    onOPFSWriteSkipped,
     onOPFSSkipQuotaExceeded,
+    type OpfsMessagePayload,
 } from '@budarin/psw-plugin-opfs-serve-range/client';
 
-onOPFSQuotaExceeded((event) => {
-    console.warn('OPFS: quota exceeded', event.data?.url);
+const unsubQuota = onOPFSQuotaExceeded((event: MessageEvent) => {
+    const data = event.data as { type: string } & OpfsMessagePayload;
+    console.warn('OPFS: quota exceeded', data.url);
+    // e.g. showToast(`Failed to save: ${data.url}`);
 });
 
-onOPFSSkipQuotaExceeded((event) => {
-    console.warn('OPFS: resource not cached (quota)', event.data?.url);
+const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
+    const data = event.data as { type: string } & OpfsMessagePayload;
+    console.warn('OPFS: resource not cached (quota)', data.url);
 });
+
+// when no longer needed:
+// unsubQuota(); unsubSkip();
 ```
 
-See [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) for details (Russian version: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
+When each message is sent: [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian: [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
 ### Clearing the cache and managing individual resources
 
@@ -191,11 +230,9 @@ To wipe the whole cache (e.g. from a UI button or on logout), call `clearOpfsCac
 
 If you need finer‑grained control (show a list of cached resources and let users delete specific ones), use the client utilities from the entry point `@budarin/psw-plugin-opfs-serve-range/client`. The list is built from metadata in the footer (each file stores its original `url`):
 
-- get a list of resources stored in OPFS with sizes and types – `listOpfsCachedResources()`;
-- check whether a particular URL is cached – `hasInOpfsCache(url)`;
-- delete a single resource by URL – `deleteFromOpfsCache(url)`.
-
-These helpers are described in more detail in the **Client utilities** section of this README and in the TypeScript definitions.
+- `listOpfsCachedResources(): Promise<OpfsCachedResource[]>` — list of resources in the OPFS cache (url, size, type, lastModified);
+- `hasInOpfsCache(url: string): Promise<boolean>` — whether the URL is cached;
+- `deleteFromOpfsCache(url: string): Promise<void>` — remove a single resource by URL.
 
 ## Plugin options
 
