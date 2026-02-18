@@ -165,94 +165,94 @@ await writeToOpfs(dir, key, response.body, metadata);
 type Unsubscribe = () => void;
 ```
 
-**`onOPFSQuotaExceeded`** — подписка на уведомление об исчерпании квоты при записи в OPFS.
+- **`onOPFSQuotaExceeded`** — подписка на уведомление об исчерпании квоты при записи в OPFS.
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+    };
 
-onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSWriteSkipped`** — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
+- **`onOPFSWriteSkipped`** — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-  size: number; // Размер файла в байтах
-  reason: string; // Причина (почему запись не начата)
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+      size: number; // Размер файла в байтах
+      reason: string; // Причина (почему запись не начата)
+    };
 
-onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSEvictionCompleted`** — подписка на уведомление о завершении эвикции.
+- **`onOPFSEvictionCompleted`** — подписка на уведомление о завершении эвикции.
 
-```ts
-type EventData = {
-  type: string;
-  count: number; // Число удалённых при эвикции файлов
-};
+    ```ts
+    type EventData = {
+      type: string;
+      count: number; // Число удалённых при эвикции файлов
+    };
 
-onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSWriteFailed`** — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
+- **`onOPFSWriteFailed`** — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
 
-```ts
-type EventData = {
-  type: string;
-  url?: string;
-  reason: string; // Причина ошибки записи
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url?: string;
+      reason: string; // Причина ошибки записи
+    };
 
-onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
+- **`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+    };
 
-onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
 ### Управление кешем и типы
 
-**`listOpfsCachedResources`** — возвращает список закешированных ресурсов.
+- **`listOpfsCachedResources`** — возвращает список закешированных ресурсов.
 
-```ts
-listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-```
+    ```ts
+    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
+    ```
 
-Элемент массива:
+    Элемент массива:
 
-```ts
-interface OpfsCachedResource {
-  url: string;
-  size: number;
-  type: string | undefined;
-  lastModified: string | undefined;
-}
-```
+    ```ts
+    interface OpfsCachedResource {
+      url: string;
+      size: number;
+      type: string | undefined;
+      lastModified: string | undefined;
+    }
+    ```
 
-**`hasInOpfsCache`** — проверяет наличие URL в кеше.
+- **`hasInOpfsCache`** — проверяет наличие URL в кеше.
 
-```ts
-hasInOpfsCache(url: string): Promise<boolean>
-```
+    ```ts
+    hasInOpfsCache(url: string): Promise<boolean>
+    ```
 
-**`deleteFromOpfsCache`** — удаляет ресурс по URL из кеша.
+- **`deleteFromOpfsCache`** — удаляет ресурс по URL из кеша.
 
-```ts
-deleteFromOpfsCache(url: string): Promise<void>
-```
+    ```ts
+    deleteFromOpfsCache(url: string): Promise<void>
+    ```
 
 Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
@@ -294,52 +294,52 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 Общая настройка кеша (имя папки, доля квоты) задаётся в **configureOpfs({ folderName, maxCacheFraction })**. Ниже — плагины пакета и их опции.
 
-**`opfsServeRange`** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
+- **`opfsServeRange`** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
 
-```ts
-opfsServeRange(options?: {
-  order?: number;
-  enableLogging?: boolean;
-  include?: string[];
-  exclude?: string[];
-  rangeResponseCacheControl?: string; // Cache-Control для ответов 206 (по умолчанию max-age=31536000, immutable)
-}): Plugin | undefined
-```
+    ```ts
+    opfsServeRange(options?: {
+      order?: number;
+      enableLogging?: boolean;
+      include?: string[];
+      exclude?: string[];
+      rangeResponseCacheControl?: string; // Cache-Control для ответов 206 (по умолчанию max-age=31536000, immutable)
+    }): Plugin | undefined
+    ```
 
-**`opfsPrecache`** — при установке сервис-воркера загружает список URL и записывает их в OPFS.
+- **`opfsPrecache`** — при установке сервис-воркера загружает список URL и записывает их в OPFS.
 
-```ts
-opfsPrecache(options: {
-  urls: string[] | (() => Promise<string[]>); // список URL или функция
-  order?: number;
-  enableLogging?: boolean;
-  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции (см. «Закреплённые ресурсы»)
-}): Plugin | undefined
-```
+    ```ts
+    opfsPrecache(options: {
+      urls: string[] | (() => Promise<string[]>); // список URL или функция
+      order?: number;
+      enableLogging?: boolean;
+      pinned?: string[]; // glob-паттерны URL, защищённых от эвикции (см. «Закреплённые ресурсы»)
+    }): Plugin | undefined
+    ```
 
-**`opfsRangeFromNetworkAndCache`** — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
+- **`opfsRangeFromNetworkAndCache`** — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
 
-```ts
-opfsRangeFromNetworkAndCache(options?: {
-  order?: number;
-  include?: string[];
-  exclude?: string[];
-  enableLogging?: boolean;
-  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
-}): Plugin | undefined
-```
+    ```ts
+    opfsRangeFromNetworkAndCache(options?: {
+      order?: number;
+      include?: string[];
+      exclude?: string[];
+      enableLogging?: boolean;
+      pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
+    }): Plugin | undefined
+    ```
 
-**`opfsBackgroundFetch`** — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
+- **`opfsBackgroundFetch`** — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
 
-```ts
-opfsBackgroundFetch(options?: {
-  order?: number;
-  include?: string[];
-  exclude?: string[];
-  enableLogging?: boolean;
-  pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
-}): Plugin | undefined
-```
+    ```ts
+    opfsBackgroundFetch(options?: {
+      order?: number;
+      include?: string[];
+      exclude?: string[];
+      enableLogging?: boolean;
+      pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
+    }): Plugin | undefined
+    ```
 
 Запуск загрузки с клиента: утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
 

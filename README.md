@@ -175,94 +175,94 @@ Each function takes a handler and returns an unsubscribe function (call it to re
 type Unsubscribe = () => void;
 ```
 
-**`onOPFSQuotaExceeded`** — subscribe to notification when the browser throws QuotaExceeded while writing to OPFS.
+- **`onOPFSQuotaExceeded`** — subscribe to notification when the browser throws QuotaExceeded while writing to OPFS.
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+    };
 
-onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSWriteSkipped`** — subscribe to notification when the write was skipped (file does not fit even after eviction).
+- **`onOPFSWriteSkipped`** — subscribe to notification when the write was skipped (file does not fit even after eviction).
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-  size: number; // File size in bytes
-  reason: string; // Reason the write was not started
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+      size: number; // File size in bytes
+      reason: string; // Reason the write was not started
+    };
 
-onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSEvictionCompleted`** — subscribe to notification when eviction has finished.
+- **`onOPFSEvictionCompleted`** — subscribe to notification when eviction has finished.
 
-```ts
-type EventData = {
-  type: string;
-  count: number; // Number of files removed by eviction
-};
+    ```ts
+    type EventData = {
+      type: string;
+      count: number; // Number of files removed by eviction
+    };
 
-onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSWriteFailed`** — subscribe to notification on write error (network, disk, partial file removed).
+- **`onOPFSWriteFailed`** — subscribe to notification on write error (network, disk, partial file removed).
 
-```ts
-type EventData = {
-  type: string;
-  url?: string;
-  reason: string; // Reason the write failed
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url?: string;
+      reason: string; // Reason the write failed
+    };
 
-onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
-**`onOPFSSkipQuotaExceeded`** — subscribe to notification on repeat request for a blacklisted URL (resource not cached).
+- **`onOPFSSkipQuotaExceeded`** — subscribe to notification on repeat request for a blacklisted URL (resource not cached).
 
-```ts
-type EventData = {
-  type: string;
-  url: string;
-};
+    ```ts
+    type EventData = {
+      type: string;
+      url: string;
+    };
 
-onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-```
+    onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
 
 ### Cache management and types
 
-**`listOpfsCachedResources`** — returns the list of cached resources.
+- **`listOpfsCachedResources`** — returns the list of cached resources.
 
-```ts
-listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-```
+    ```ts
+    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
+    ```
 
-Each array element:
+    Each array element:
 
-```ts
-interface OpfsCachedResource {
-  url: string;
-  size: number;
-  type: string | undefined;
-  lastModified: string | undefined;
-}
-```
+    ```ts
+    interface OpfsCachedResource {
+      url: string;
+      size: number;
+      type: string | undefined;
+      lastModified: string | undefined;
+    }
+    ```
 
-**`hasInOpfsCache`** — checks whether a URL is in the cache.
+- **`hasInOpfsCache`** — checks whether a URL is in the cache.
 
-```ts
-hasInOpfsCache(url: string): Promise<boolean>
-```
+    ```ts
+    hasInOpfsCache(url: string): Promise<boolean>
+    ```
 
-**`deleteFromOpfsCache`** — removes a resource by URL from the cache.
+- **`deleteFromOpfsCache`** — removes a resource by URL from the cache.
 
-```ts
-deleteFromOpfsCache(url: string): Promise<void>
-```
+    ```ts
+    deleteFromOpfsCache(url: string): Promise<void>
+    ```
 
 Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
 
@@ -304,52 +304,52 @@ If you need finer‑grained control (show a list of cached resources and let use
 
 Global cache settings (folder name, quota fraction) are set in **configureOpfs({ folderName, maxCacheFraction })**. Below are the package plugins and their options.
 
-**`opfsServeRange`** — reads files from OPFS and serves requested byte ranges.
+- **`opfsServeRange`** — reads files from OPFS and serves requested byte ranges.
 
-```ts
-opfsServeRange(options?: {
-  order?: number;
-  enableLogging?: boolean;
-  include?: string[];
-  exclude?: string[];
-  rangeResponseCacheControl?: string; // Cache-Control for 206 responses (default: max-age=31536000, immutable)
-}): Plugin | undefined
-```
+    ```ts
+    opfsServeRange(options?: {
+      order?: number;
+      enableLogging?: boolean;
+      include?: string[];
+      exclude?: string[];
+      rangeResponseCacheControl?: string; // Cache-Control for 206 responses (default: max-age=31536000, immutable)
+    }): Plugin | undefined
+    ```
 
-**`opfsPrecache`** — during SW install, fetches a list of URLs and writes them to OPFS.
+- **`opfsPrecache`** — during SW install, fetches a list of URLs and writes them to OPFS.
 
-```ts
-opfsPrecache(options: {
-  urls: string[] | (() => Promise<string[]>); // array of URLs or function
-  order?: number;
-  enableLogging?: boolean;
-  pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
-}): Plugin | undefined
-```
+    ```ts
+    opfsPrecache(options: {
+      urls: string[] | (() => Promise<string[]>); // array of URLs or function
+      order?: number;
+      enableLogging?: boolean;
+      pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
+    }): Plugin | undefined
+    ```
 
-**`opfsRangeFromNetworkAndCache`** — handles requests that opfsServeRange did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally fills OPFS in the background.
+- **`opfsRangeFromNetworkAndCache`** — handles requests that opfsServeRange did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally fills OPFS in the background.
 
-```ts
-opfsRangeFromNetworkAndCache(options?: {
-  order?: number;
-  include?: string[];
-  exclude?: string[];
-  enableLogging?: boolean;
-  pinned?: string[]; // glob patterns for URLs protected from eviction
-}): Plugin | undefined
-```
+    ```ts
+    opfsRangeFromNetworkAndCache(options?: {
+      order?: number;
+      include?: string[];
+      exclude?: string[];
+      enableLogging?: boolean;
+      pinned?: string[]; // glob patterns for URLs protected from eviction
+    }): Plugin | undefined
+    ```
 
-**`opfsBackgroundFetch`** — on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by opfsServeRange.
+- **`opfsBackgroundFetch`** — on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by opfsServeRange.
 
-```ts
-opfsBackgroundFetch(options?: {
-  order?: number;
-  include?: string[];
-  exclude?: string[];
-  enableLogging?: boolean;
-  pinned?: string[]; // glob patterns for URLs protected from eviction
-}): Plugin | undefined
-```
+    ```ts
+    opfsBackgroundFetch(options?: {
+      order?: number;
+      include?: string[];
+      exclude?: string[];
+      enableLogging?: boolean;
+      pinned?: string[]; // glob patterns for URLs protected from eviction
+    }): Plugin | undefined
+    ```
 
 To trigger downloads from the client: `@budarin/pluggable-serviceworker/client/background-fetch`.
 
