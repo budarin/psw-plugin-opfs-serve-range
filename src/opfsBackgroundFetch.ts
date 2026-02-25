@@ -3,10 +3,11 @@
  * записывает ответы в OPFS (range cache). Дальнейшие range-запросы к этим URL обслуживает opfsServeRange.
  */
 
-import type { Plugin } from '@budarin/pluggable-serviceworker';
+import type { Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
-import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
-import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { getOpfsDir, getRoot } from './opfsUtil.js';
+import { urlToOpfsKey } from './opfsKey.js';
+import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isBlacklisted } from './opfsLru.js';
 import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
@@ -52,7 +53,8 @@ export function opfsBackgroundFetch(
         name: 'opfs-background-fetch',
         order,
 
-        async backgroundfetchsuccess(event, logger): Promise<void> {
+        async backgroundfetchsuccess(event, context: PluginContext): Promise<void> {
+            const logger = context.logger ?? console;
             const root = await getRoot();
             const dir = await getOpfsDir(root, true);
             const records = await event.registration.matchAll();
@@ -88,7 +90,7 @@ export function opfsBackgroundFetch(
                 try {
                     const key = await urlToOpfsKey(url);
                     const baseMetadata = metadataFromResponse(response, url);
-                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const evictable = isEvictable(url, pinned);
                     const metadata = { ...baseMetadata, evictable };
                     await writeToOpfs(dir, key, response.body, metadata, {
                         url,
@@ -110,7 +112,8 @@ export function opfsBackgroundFetch(
             }
         },
 
-        async backgroundfetchfail(event, logger): Promise<void> {
+        async backgroundfetchfail(event, context: PluginContext): Promise<void> {
+            const logger = context.logger ?? console;
             if (enableLogging) {
                 logger.warn(
                     `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
@@ -118,7 +121,8 @@ export function opfsBackgroundFetch(
             }
         },
 
-        async backgroundfetchabort(event, logger): Promise<void> {
+        async backgroundfetchabort(event, context: PluginContext): Promise<void> {
+            const logger = context.logger ?? console;
             if (enableLogging) {
                 logger.debug(
                     `opfsBackgroundFetch: background fetch aborted, id=${event.registration.id}`
@@ -126,7 +130,8 @@ export function opfsBackgroundFetch(
             }
         },
 
-        async backgroundfetchclick(event, logger): Promise<void> {
+        async backgroundfetchclick(event, context: PluginContext): Promise<void> {
+            const logger = context.logger ?? console;
             if (enableLogging) {
                 logger.debug(
                     `opfsBackgroundFetch: user clicked download UI, id=${event.registration.id}`

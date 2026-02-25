@@ -86,6 +86,14 @@ export function matchesGlob(url: string, pattern: string): boolean {
     return getGlobRegex(pattern).test(pathname);
 }
 
+/**
+ * Определяет, можно ли эвиктить ресурс по pinned-паттернам.
+ * URL, совпадающий с pinned, не эвиктится (evictable: false).
+ */
+export function isEvictable(url: string, pinned?: string[]): boolean {
+    return pinned ? !shouldProcessFile(url, pinned) : true;
+}
+
 export function shouldProcessFile(
     url: string,
     include?: string[],

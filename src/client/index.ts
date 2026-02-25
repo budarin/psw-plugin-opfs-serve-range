@@ -14,7 +14,7 @@ import {
 } from '../opfsMessages.js';
 import { getOpfsDir, getRoot } from '../opfsUtil.js';
 import { readMetadataFromFileFooter, type OpfsMetadata } from '../opfsFormat.js';
-import { urlToOpfsKey } from '../index.js';
+import { urlToOpfsKey } from '../opfsKey.js';
 
 export {
     OPFS_MSG_QUOTA_EXCEEDED,
@@ -110,28 +110,32 @@ export async function listOpfsCachedResources(): Promise<OpfsCachedResource[]> {
     if (!dir) {
         return [];
     }
-    const result: OpfsCachedResource[] = [];
+    const fileHandles: FileSystemFileHandle[] = [];
     for await (const [, handle] of dir.entries()) {
-        if (handle.kind !== 'file') {
-            continue;
-        }
-        try {
-            const file = await (handle as FileSystemFileHandle).getFile();
-            const metadata = await readMetadataFromFile(file);
-            if (!metadata || !metadata.url) {
-                continue;
-            }
-            result.push({
-                url: metadata.url,
-                size: metadata.size,
-                type: metadata.type,
-                lastModified: metadata.lastModified,
-            });
-        } catch {
-            // битый или недоступный файл — пропускаем
+        if (handle.kind === 'file') {
+            fileHandles.push(handle as FileSystemFileHandle);
         }
     }
-    return result;
+    const results = await Promise.all(
+        fileHandles.map(async (handle): Promise<OpfsCachedResource | null> => {
+            try {
+                const file = await handle.getFile();
+                const metadata = await readMetadataFromFile(file);
+                if (!metadata || !metadata.url) {
+                    return null;
+                }
+                return {
+                    url: metadata.url,
+                    size: metadata.size,
+                    type: metadata.type,
+                    lastModified: metadata.lastModified,
+                };
+            } catch {
+                return null;
+            }
+        })
+    );
+    return results.filter((r): r is OpfsCachedResource => r !== null);
 }
 
 export async function hasInOpfsCache(url: string): Promise<boolean> {

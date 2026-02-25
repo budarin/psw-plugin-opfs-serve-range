@@ -3,9 +3,10 @@
  * Использует общие утилиты и формат из этого пакета.
  */
 
-import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
-import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
-import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import type { Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
+import { getOpfsDir, getRoot } from './opfsUtil.js';
+import { urlToOpfsKey } from './opfsKey.js';
+import { isOpfsAvailable, isEvictable } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 
 export interface OpfsPrecacheOptions {
@@ -43,7 +44,8 @@ export function opfsPrecache(
         name: 'opfs-precache',
         order,
 
-        async install(_event: ExtendableEvent, logger: Logger): Promise<void> {
+        async install(_event: ExtendableEvent, context: PluginContext): Promise<void> {
+            const logger = context.logger ?? console;
             const list =
                 typeof urls === 'function' ? await urls() : urls;
             if (list.length === 0) {
@@ -65,7 +67,7 @@ export function opfsPrecache(
                         continue;
                     }
                     const baseMetadata = metadataFromResponse(response, url);
-                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const evictable = isEvictable(url, pinned);
                     const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
                     await writeToOpfs(dir, key, response.body, metadata, {

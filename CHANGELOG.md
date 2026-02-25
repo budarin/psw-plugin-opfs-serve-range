@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 - 2026-02-25
+
+- **Breaking:** Migrated to `@budarin/pluggable-serviceworker@^1.11.0`: plugin handlers now receive `context: PluginContext` (with `logger`, `base`) instead of `logger: Logger` as the second argument. Use `context.logger ?? console` when a logger is needed.
+- **Architecture:** Extracted `urlToOpfsKey` into `opfsKey.ts` to eliminate circular dependencies (opfsRangeFromNetworkAndCache, opfsPrecache, opfsBackgroundFetch no longer import from index).
+- **New:** Added `isEvictable(url, pinned)` helper in opfsUtil; replaced duplicated `pinned ? !shouldProcessFile(url, pinned) : true` across plugins.
+- **Performance:** Parallelized `listOpfsCachedResources()` — file reads now run concurrently via `Promise.all`.
+- **Docs:** Documented limitation when server returns 200 for Range request without Content-Length (full body buffered in memory).
+
 ## 1.2.1 - 2026-02-18
 
 - Upgrade deps `@budarin/pluggable-serviceworker` to `1.10.9`

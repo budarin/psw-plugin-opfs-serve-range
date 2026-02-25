@@ -4,10 +4,11 @@
  * фоновую полную загрузку в OPFS (без дублей по URL). В кеш пишет только полные ответы (200).
  */
 
-import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
+import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
-import { getOpfsDir, getRoot, urlToOpfsKey } from './index.js';
+import { getOpfsDir, getRoot } from './opfsUtil.js';
+import { urlToOpfsKey } from './opfsKey.js';
 import {
     parseRangeHeader,
     build206Response,
@@ -15,7 +16,7 @@ import {
     createRangeExtractTransform,
 } from './opfsRangeUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
-import { isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { isBlacklisted } from './opfsLru.js';
 import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
 
@@ -82,7 +83,7 @@ async function backgroundFullFetchToOpfs(
             return;
         }
         const baseMetadata = metadataFromResponse(response, url);
-        const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+        const evictable = isEvictable(url, pinned);
         const metadata = { ...baseMetadata, evictable };
         const key = await urlToOpfsKey(url);
         const root = await getRoot();
@@ -128,8 +129,9 @@ export function opfsRangeFromNetworkAndCache(
 
         async fetch(
             event: FetchEvent,
-            logger: Logger
+            context: PluginContext
         ): Promise<Response | undefined> {
+            const logger = context.logger ?? console;
             const request = event.request;
             if (request.method !== 'GET') {
                 return;
@@ -161,7 +163,7 @@ export function opfsRangeFromNetworkAndCache(
                         });
                     }
                     const baseMetadata = metadataFromResponse(response, url);
-                    const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                    const evictable = isEvictable(url, pinned);
                     const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
                     const root = await getRoot();
@@ -248,7 +250,7 @@ export function opfsRangeFromNetworkAndCache(
                     ) {
                         const range = parseRangeHeader(rangeHeader, fullSize);
                         const baseMetadata = metadataFromResponse(response, url);
-                        const evictable = pinned ? !shouldProcessFile(url, pinned) : true;
+                        const evictable = isEvictable(url, pinned);
                         const metadata = { ...baseMetadata, evictable };
                         const key = await urlToOpfsKey(url);
                         const root = await getRoot();

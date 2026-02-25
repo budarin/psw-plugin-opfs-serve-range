@@ -4,7 +4,7 @@
  * Очистка = удалить один файл, мусора нет.
  */
 
-import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
+import type { Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
 
@@ -17,6 +17,7 @@ import {
     type OpfsMetadata,
 } from './opfsFormat.js';
 import { getOpfsDir, getRoot, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import { urlToOpfsKey } from './opfsKey.js';
 import { parseRangeHeader, build206Response } from './opfsRangeUtil.js';
 
 export {
@@ -36,8 +37,10 @@ export {
     configureOpfs,
     isOpfsAvailable,
     getMaxCacheFraction,
+    isEvictable,
     type OpfsConfigOptions,
 } from './opfsUtil.js';
+export { urlToOpfsKey } from './opfsKey.js';
 
 export { isBlacklisted, addToBlacklist, getStorageEstimate, getCacheLimit } from './opfsLru.js';
 export type { StorageEstimate, CacheFileEntry, EnsureSpaceResult } from './opfsLru.js';
@@ -75,31 +78,6 @@ export interface OpfsServeRangeOptions {
      * Cache-Control для ответов 206 (по умолчанию `max-age=31536000, immutable`).
      */
     rangeResponseCacheControl?: string;
-}
-
-const urlToKeyCache = new Map<string, string>();
-
-/**
- * Вычисляет ключ файла в OPFS по URL: hex(SHA-256(URL)).
- * Результат кешируется в памяти на время жизни воркера — повторные запросы по одному URL не пересчитывают хеш.
- * Плагин кеширования в OPFS должен использовать ту же функцию для записи.
- */
-export async function urlToOpfsKey(url: string): Promise<string> {
-    const cached = urlToKeyCache.get(url);
-    if (cached !== undefined) {
-        return cached;
-    }
-    const bytes = new TextEncoder().encode(url);
-    const hash = await crypto.subtle.digest('SHA-256', bytes);
-    const hex = '0123456789abcdef';
-    const arr = new Uint8Array(hash);
-    let key = '';
-    for (let i = 0; i < arr.length; i++) {
-        const b = arr[i]!;
-        key += hex.charAt(b >> 4) + hex.charAt(b & 0x0f);
-    }
-    urlToKeyCache.set(url, key);
-    return key;
 }
 
 function ifRangeMatches(
@@ -183,8 +161,9 @@ export function opfsServeRange(
 
         async fetch(
             event: FetchEvent,
-            logger: Logger
+            context: PluginContext
         ): Promise<Response | undefined> {
+            const logger = context.logger ?? console;
             const request = event.request;
             const rangeHeader = request.headers.get(HEADER_RANGE);
 
