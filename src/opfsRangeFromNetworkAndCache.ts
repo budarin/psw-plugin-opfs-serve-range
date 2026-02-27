@@ -53,6 +53,7 @@ async function backgroundFullFetchToOpfs(
     url: string,
     logger: Logger,
     enableLogging: boolean,
+    fetchPassthrough: (request: Request) => Promise<Response>,
     pinned?: string[]
 ): Promise<void> {
     try {
@@ -65,7 +66,7 @@ async function backgroundFullFetchToOpfs(
             return;
         }
         const fullRequest = new Request(url, { method: 'GET' });
-        const response = await fetch(fullRequest);
+        const response = await fetchPassthrough(fullRequest);
         if (!response.ok || !response.body) {
             if (enableLogging) {
                 logger.debug(
@@ -147,7 +148,7 @@ export function opfsRangeFromNetworkAndCache(
             if (!rangeHeader) {
                 // Полный GET: fetch, при 200 кешируем (tee) и отдаём ответ.
                 try {
-                    const response = await fetch(request);
+                    const response = await context.fetchPassthrough(request);
                     if (!response.ok || !response.body) {
                         return response;
                     }
@@ -211,7 +212,7 @@ export function opfsRangeFromNetworkAndCache(
                     }
                 }
 
-                const response = await fetch(request);
+                const response = await context.fetchPassthrough(request);
                 if (!response.body) {
                     return response;
                 }
@@ -219,7 +220,7 @@ export function opfsRangeFromNetworkAndCache(
                 if (response.status === 206) {
                     if (!loadingUrls.has(url)) {
                         loadingUrls.add(url);
-                        backgroundFullFetchToOpfs(url, logger, enableLogging, pinned);
+                        backgroundFullFetchToOpfs(url, logger, enableLogging, context.fetchPassthrough, pinned);
                     }
                     return new Response(response.body, {
                         status: response.status,

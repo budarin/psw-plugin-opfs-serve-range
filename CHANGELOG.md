@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** Require `@budarin/pluggable-serviceworker@^1.16.0`. The framework passes `fetchPassthrough` in `context` to each plugin. This plugin now uses `context.fetchPassthrough(request)` instead of `fetch(request)` for all network requests (opfsRangeFromNetworkAndCache, opfsPrecache). No changes required in `initServiceWorker(plugins, options)` — the framework injects `fetchPassthrough` into the context.
+
 ## 1.3.0 - 2026-02-25
 
 - **Breaking:** Migrated to `@budarin/pluggable-serviceworker@^1.11.0`: plugin handlers now receive `context: PluginContext` (with `logger`, `base`) instead of `logger: Logger` as the second argument. Use `context.logger ?? console` when a logger is needed.

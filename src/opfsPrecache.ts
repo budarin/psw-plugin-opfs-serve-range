@@ -57,7 +57,7 @@ export function opfsPrecache(
 
             for (const url of list) {
                 try {
-                    const response = await fetch(url);
+                    const response = await context.fetchPassthrough(new Request(url));
                     if (!response.ok || !response.body) {
                         if (enableLogging) {
                             logger.warn(
