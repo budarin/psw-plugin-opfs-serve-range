@@ -1,1 +1,55 @@
-{"name":"@budarin/psw-plugin-opfs-serve-range","version":"1.4.0","description":"Service Worker plugin: serve HTTP Range requests from OPFS files","keywords":["service-worker","opfs","range-requests","pluggable-serviceworker"],"license":"MIT","files":["dist","docs","LICENSE","README.md"],"type":"module","main":"./dist/index.js","types":"./dist/index.d.ts","exports":{".":{"types":"./dist/index.d.ts","import":"./dist/index.js","default":"./dist/index.js"},"./client":{"types":"./dist/client/index.d.ts","import":"./dist/client/index.js","default":"./dist/client/index.js"}},"peerDependencies":{"@budarin/pluggable-serviceworker":"^1.16.0"},"dependencies":{"@budarin/http-constants":"^1.0.22"},"devDependencies":{"@budarin/pluggable-serviceworker":"^1.16.0","@types/serviceworker":"^0.0.192","@types/web":"^0.0.338","typescript":"^5.9.3","vitest":"^4.0.18"},"scripts":{"build":"tsc","type-check":"tsc -b -noEmit","test":"vitest run","clear-caches":"sh scripts/clear-caches.sh","pnpm-install":"pnpm install","upgrade-deps":"sh scripts/upgrade-deps.sh","publish-package":"pnpm build && pnpm publish --access=public"}}
+{
+    "name": "@budarin/psw-plugin-opfs-serve-range",
+    "version": "1.4.1",
+    "description": "Service Worker plugin: serve HTTP Range requests from OPFS files",
+    "keywords": [
+        "service-worker",
+        "opfs",
+        "range-requests",
+        "pluggable-serviceworker"
+    ],
+    "license": "MIT",
+    "files": [
+        "dist",
+        "docs",
+        "LICENSE",
+        "README.md"
+    ],
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        },
+        "./client": {
+            "types": "./dist/client/index.d.ts",
+            "import": "./dist/client/index.js",
+            "default": "./dist/client/index.js"
+        }
+    },
+    "peerDependencies": {
+        "@budarin/pluggable-serviceworker": "^1.17.0"
+    },
+    "dependencies": {
+        "@budarin/http-constants": "^1.0.22"
+    },
+    "devDependencies": {
+        "@budarin/pluggable-serviceworker": "^1.17.0",
+        "@types/serviceworker": "^0.0.192",
+        "@types/web": "^0.0.338",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18"
+    },
+    "scripts": {
+        "build": "tsc",
+        "type-check": "tsc -b -noEmit",
+        "test": "vitest run",
+        "clear-caches": "sh scripts/clear-caches.sh",
+        "pnpm-install": "pnpm install",
+        "upgrade-deps": "sh scripts/upgrade-deps.sh",
+        "publish-package": "pnpm build && pnpm publish --access=public"
+    }
+}
