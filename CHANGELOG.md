@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.2 - 2025-03-05
+
+- Version bump.
+
 ## 1.4.1 - 2025-03-02
 
 - Require `@budarin/pluggable-serviceworker@^1.17.0` (peer and dev). No API changes in the plugin; compatible with 1.17.x.
