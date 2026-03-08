@@ -8,6 +8,9 @@ import { readMetadataFromFileFooter } from './opfsFormat.js';
 
 export const EVICTION_INDEX_FILENAME = '_eviction_index.json';
 
+const LAST_ACCESSED_THROTTLE_MS = 5000;
+const lastAccessedUpdateByKey = new Map<string, number>();
+
 export interface EvictionIndexEntry {
     key: string;
     size: number;
@@ -128,17 +131,22 @@ export async function getEntriesForEviction(
 }
 
 /**
- * Обновляет lastAccessed для ключа в индексе. Если ключа нет — не добавляет (индекс только для evictable, запись при добавлении файла).
+ * Обновляет lastAccessed для ключа в индексе. Если индекса нет — пересобирает его из папки, затем обновляет запись (чтобы индекс появился при первом просмотре после обновления плагина).
+ * Троттлинг 5 с на ключ: при перемотке не пишем в индекс чаще раза в 5 с.
  */
 export async function updateEvictionIndexLastAccessed(
     dir: FileSystemDirectoryHandle,
     key: string,
     lastAccessed: number
 ): Promise<void> {
+    const last = lastAccessedUpdateByKey.get(key);
+    if (last !== undefined && lastAccessed - last < LAST_ACCESSED_THROTTLE_MS) {
+        return;
+    }
     return runWithLock(async () => {
-        const entries = await readIndexRaw(dir);
+        let entries = await readIndexRaw(dir);
         if (entries === null) {
-            return;
+            entries = await rebuildIndex(dir);
         }
         const idx = entries.findIndex((e) => e.key === key);
         if (idx === -1) {
@@ -146,6 +154,7 @@ export async function updateEvictionIndexLastAccessed(
         }
         entries[idx]!.lastAccessed = lastAccessed;
         await writeIndexRaw(dir, entries);
+        lastAccessedUpdateByKey.set(key, lastAccessed);
     });
 }
 

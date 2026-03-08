@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1 - 2025-03-08
+
+- **Eviction index:** When index is missing on serve, it is rebuilt from the cache dir so `_eviction_index.json` appears on first watch after plugin update. **lastAccessed** updates on serve are throttled to at most once per 5 seconds per key (reduces index writes during seeking).
+
 ## 1.5.0 - 2025-03-08
 
 - **LRU eviction index:** Added `_eviction_index.json` in the cache directory. It stores only evictable entries (`key`, `size`, `lastAccessed`) and is used for LRU eviction. When missing or corrupted, the index is rebuilt from file footers. All index operations are serialized with an in-memory lock.

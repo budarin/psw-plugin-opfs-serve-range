@@ -42,7 +42,7 @@ For convenience, the package exports constants:
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. All index reads and writes are serialized with an in‑memory lock so updates are consistent.
 
-When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
+When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), at most once per 5 seconds per file during rapid requests (e.g. seeking), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
 
 ---
 
@@ -156,7 +156,7 @@ For convenience, the package exports constants:
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. All index reads and writes are serialized with an in‑memory lock so updates are consistent.
 
-When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
+When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), at most once per 5 seconds per file during rapid requests (e.g. seeking), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
 
 ---
 
@@ -270,7 +270,7 @@ For convenience, the package exports constants:
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. All index reads and writes are serialized with an in‑memory lock so updates are consistent.
 
-When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
+When a file is **read** (a Range response served from cache), **`lastAccessed`** is updated **in the index only** (in the background via `event.waitUntil`), at most once per 5 seconds per file during rapid requests (e.g. seeking), not in the file footer. That avoids concurrent read/write on the same OPFS file (which could cause errors when seeking). When a file is **written**, the current time is stored in the file footer and, if the file is evictable, a new entry is added to the index.
 
 ---
 
