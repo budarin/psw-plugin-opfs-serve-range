@@ -20,6 +20,40 @@ export interface RangeSpec {
     end: number;
 }
 
+/** Размер чанка при потоковом чтении диапазона из File (не создаём один большой Blob). */
+const FILE_RANGE_STREAM_CHUNK_SIZE = 256 * 1024;
+
+/**
+ * Поток, читающий из File только байты [range.start, range.end] чанками.
+ * Не создаёт один огромный Blob — только маленькие slice на каждый чанк.
+ */
+export function createFileRangeStream(
+    file: File,
+    range: RangeSpec
+): ReadableStream<Uint8Array> {
+    const length = range.end - range.start + 1;
+    let offset = range.start;
+    let read = 0;
+
+    return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+            if (read >= length) {
+                controller.close();
+                return;
+            }
+            const chunkSize = Math.min(
+                FILE_RANGE_STREAM_CHUNK_SIZE,
+                length - read
+            );
+            const blob = file.slice(offset, offset + chunkSize);
+            const buf = await blob.arrayBuffer();
+            controller.enqueue(new Uint8Array(buf));
+            offset += chunkSize;
+            read += chunkSize;
+        },
+    });
+}
+
 /**
  * Парсит заголовок Range и возвращает диапазон [start, end] (inclusive).
  * @throws Error при невалидном формате или выходе за границы fullSize
@@ -101,6 +135,8 @@ export function createRangeExtractTransform(
 
 /**
  * Собирает ответ 206 Partial Content по срезу Blob и полному размеру.
+ * Тело отдаётся потоком (rangeBlob.stream()), чтобы при отмене первого «полного» запроса
+ * плеера не держать весь диапазон в буфере.
  */
 export function build206Response(
     rangeBlob: Blob,
@@ -132,7 +168,7 @@ export function build206Response(
         headers.set(HEADER_LAST_MODIFIED, lastModified);
     }
 
-    return new Response(rangeBlob, {
+    return new Response(rangeBlob.stream(), {
         status: HTTP_STATUS_PARTIAL_CONTENT,
         headers,
     });

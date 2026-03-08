@@ -18,7 +18,11 @@ import {
 } from './opfsFormat.js';
 import { getOpfsDir, getRoot, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
-import { parseRangeHeader, build206Response } from './opfsRangeUtil.js';
+import {
+    parseRangeHeader,
+    build206ResponseFromStream,
+    createFileRangeStream,
+} from './opfsRangeUtil.js';
 
 export {
     OPFS_META_FOOTER_LENGTH,
@@ -238,19 +242,22 @@ export function opfsServeRange(
             try {
                 const range = parseRangeHeader(rangeHeader, size);
 
-                // Blob.slice(start, end): end exclusive → для [start, end] inclusive используем end + 1
-                const blob = file.slice(range.start, range.end + 1);
-
-                const response = build206Response(blob, range, size, {
-                    type,
-                    ...(metadata?.etag && { etag: metadata.etag }),
-                    ...(metadata?.lastModified && {
-                        lastModified: metadata.lastModified,
-                    }),
-                    ...(rangeResponseCacheControl && {
-                        cacheControl: rangeResponseCacheControl,
-                    }),
-                });
+                const rangeStream = createFileRangeStream(file, range);
+                const response = build206ResponseFromStream(
+                    rangeStream,
+                    range,
+                    size,
+                    {
+                        type,
+                        ...(metadata?.etag && { etag: metadata.etag }),
+                        ...(metadata?.lastModified && {
+                            lastModified: metadata.lastModified,
+                        }),
+                        ...(rangeResponseCacheControl && {
+                            cacheControl: rangeResponseCacheControl,
+                        }),
+                    }
+                );
 
                 if (metadata && event.waitUntil) {
                     event.waitUntil(
@@ -283,6 +290,7 @@ export {
     parseRangeHeader,
     build206Response,
     build206ResponseFromStream,
+    createFileRangeStream,
     createRangeExtractTransform,
 } from './opfsRangeUtil.js';
 export type { RangeSpec, Build206Options } from './opfsRangeUtil.js';
