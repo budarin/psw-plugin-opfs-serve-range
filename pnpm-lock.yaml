@@ -19,8 +19,8 @@ importers:
         specifier: ^0.0.193
         version: 0.0.193
       '@types/web':
-        specifier: ^0.0.339
-        version: 0.0.339
+        specifier: ^0.0.340
+        version: 0.0.340
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -348,8 +348,8 @@ packages:
   '@types/serviceworker@0.0.193':
     resolution: {integrity: sha512-3nZH1ahex0tTmAuCRF/zJWsxq730GW9xItPm5U4EtZYF0MdqKEdyypgOteJnikWZ8QGPGetEkooSD4z7nQblRw==}
 
-  '@types/web@0.0.339':
-    resolution: {integrity: sha512-bckDV6OqUF2vnpXMAR7Qo9Wc6gAiGGqupU0RiHo7GVvgZcGdpTf5T3MIB4s83hxNp83VNCgRh2L4OuhL0zxMFw==}
+  '@types/web@0.0.340':
+    resolution: {integrity: sha512-5+K8cBZyRUm55UtyZH0T/oC1sKLmqYEFfHhI8O/ZhKr4JwUfuD5qc+3YQ6Hy0L2TJXa4tbCAkGSAW1w9v/TAag==}
 
   '@vitest/expect@4.0.18':
     resolution: {integrity: sha512-8sCWUyckXXYvx4opfzVY03EOiYVxyNrHS5QxX3DAIi5dpJAAkyJezHCP77VMX4HKA2LDT/Jpfo8i2r5BE3GnQQ==}
@@ -735,7 +735,7 @@ snapshots:
 
   '@types/serviceworker@0.0.193': {}
 
-  '@types/web@0.0.339': {}
+  '@types/web@0.0.340': {}
 
   '@vitest/expect@4.0.18':
     dependencies:

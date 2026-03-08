@@ -79,9 +79,9 @@ export async function writeToOpfs(
     let bodySize = 0;
 
     const wrapper = new WritableStream<Uint8Array>({
-        write(chunk) {
+        async write(chunk) {
             bodySize += chunk.byteLength;
-            return writable.write(
+            await writable.write(
                 chunk as Parameters<FileSystemWritableFileStream['write']>[0]
             );
         },
@@ -93,14 +93,15 @@ export async function writeToOpfs(
             };
             const metaJson = JSON.stringify(meta);
             const metaBytes = new TextEncoder().encode(metaJson);
-            const lengthAb = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
-            new DataView(lengthAb).setUint32(0, metaBytes.length, true);
+            const lengthBuf = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
+            new DataView(lengthBuf).setUint32(0, metaBytes.length, true);
+            const lengthBytes = new Uint8Array(lengthBuf);
 
             await writable.seek(bodySize);
             await writable.write(
                 metaBytes as Parameters<FileSystemWritableFileStream['write']>[0]
             );
-            await writable.write(lengthAb);
+            await writable.write(lengthBytes);
             await writable.close();
         },
     });

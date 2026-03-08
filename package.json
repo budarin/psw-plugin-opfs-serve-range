@@ -39,7 +39,7 @@
     "devDependencies": {
         "@budarin/pluggable-serviceworker": "^1.17.2",
         "@types/serviceworker": "^0.0.193",
-        "@types/web": "^0.0.339",
+        "@types/web": "^0.0.340",
         "typescript": "^5.9.3",
         "vitest": "^4.0.18"
     },

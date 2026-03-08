@@ -124,7 +124,7 @@ async function updateLastAccessedInBackground(
         }
         const lengthAb = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
         new DataView(lengthAb).setUint32(0, metaBytes.length, true);
-        const writable = await handle.createWritable();
+        const writable = await handle.createWritable({ keepExistingData: true });
         await writable.seek(bodySize);
         await writable.write(
             metaBytes as Parameters<FileSystemWritableFileStream['write']>[0]
