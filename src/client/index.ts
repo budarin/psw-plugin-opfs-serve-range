@@ -11,6 +11,8 @@ import {
     OPFS_MSG_EVICTION_COMPLETED,
     OPFS_MSG_WRITE_FAILED,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+    OPFS_MSG_BACKGROUND_FETCH_FAILED,
+    OPFS_MSG_BACKGROUND_FETCH_ABORTED,
 } from '../opfsMessages.js';
 import { getOpfsDir, getRoot } from '../opfsUtil.js';
 import { readMetadataFromFileFooter, type OpfsMetadata } from '../opfsFormat.js';
@@ -23,6 +25,8 @@ export {
     OPFS_MSG_EVICTION_COMPLETED,
     OPFS_MSG_WRITE_FAILED,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+    OPFS_MSG_BACKGROUND_FETCH_FAILED,
+    OPFS_MSG_BACKGROUND_FETCH_ABORTED,
 } from '../opfsMessages.js';
 export type { OpfsMessageType } from '../opfsMessages.js';
 
@@ -75,11 +79,25 @@ export function onOPFSWriteFailed(
     return onServiceWorkerMessage(OPFS_MSG_WRITE_FAILED, handler as (e: MessageEvent) => void);
 }
 
-/** Подписка на сообщение «повторный запрос к URL из чёрного списка (не кешируем)». */
+/** Подписка на сообщение «повторный запрос к URL из blocklist (не кешируем)». */
 export function onOPFSSkipQuotaExceeded(
     handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void
 ): () => void {
     return onServiceWorkerMessage(OPFS_MSG_SKIP_QUOTA_EXCEEDED, handler as (e: MessageEvent) => void);
+}
+
+/** Подписка на сообщение «Background Fetch завершился с ошибкой». */
+export function onOPFSBackgroundFetchFailed(
+    handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void
+): () => void {
+    return onServiceWorkerMessage(OPFS_MSG_BACKGROUND_FETCH_FAILED, handler as (e: MessageEvent) => void);
+}
+
+/** Подписка на сообщение «Background Fetch отменён». */
+export function onOPFSBackgroundFetchAborted(
+    handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void
+): () => void {
+    return onServiceWorkerMessage(OPFS_MSG_BACKGROUND_FETCH_ABORTED, handler as (e: MessageEvent) => void);
 }
 
 async function getOpfsCacheDirOrUndefined(): Promise<FileSystemDirectoryHandle | undefined> {

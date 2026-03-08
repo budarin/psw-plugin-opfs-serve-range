@@ -17,7 +17,7 @@ import {
 } from './opfsRangeUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
-import { isBlacklisted } from './opfsLru.js';
+import { isBlocklisted } from './opfsLru.js';
 import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
 
 /** URL, по которым уже идёт фоновая полная загрузка в OPFS. */
@@ -57,10 +57,10 @@ async function backgroundFullFetchToOpfs(
     pinned?: string[]
 ): Promise<void> {
     try {
-        if (isBlacklisted(url)) {
+        if (isBlocklisted(url)) {
             if (enableLogging) {
                 logger.debug(
-                    `opfsRangeFromNetworkAndCache: skip ${url} (blacklisted, quota exceeded)`
+                    `opfsRangeFromNetworkAndCache: skip ${url} (blocklisted, quota exceeded)`
                 );
             }
             return;
@@ -155,7 +155,7 @@ export function opfsRangeFromNetworkAndCache(
                     if (response.status !== 200) {
                         return response;
                     }
-                    if (isBlacklisted(url)) {
+                    if (isBlocklisted(url)) {
                         notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
                         return new Response(response.body, {
                             status: response.status,

@@ -9,8 +9,12 @@ import { getOpfsDir, getRoot } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
-import { isBlacklisted } from './opfsLru.js';
-import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
+import { isBlocklisted } from './opfsLru.js';
+import {
+    OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+    OPFS_MSG_BACKGROUND_FETCH_FAILED,
+    OPFS_MSG_BACKGROUND_FETCH_ABORTED,
+} from './opfsMessages.js';
 
 export interface OpfsBackgroundFetchOptions {
     /**
@@ -69,11 +73,11 @@ export function opfsBackgroundFetch(
                     }
                     continue;
                 }
-                if (isBlacklisted(url)) {
+                if (isBlocklisted(url)) {
                     notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: skip ${url} (blacklisted, quota exceeded)`
+                            `opfsBackgroundFetch: skip ${url} (blocklisted, quota exceeded)`
                         );
                     }
                     continue;
@@ -114,6 +118,9 @@ export function opfsBackgroundFetch(
 
         async backgroundfetchfail(event, context: PluginContext): Promise<void> {
             const logger = context.logger ?? console;
+            notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
+                registrationId: event.registration.id,
+            });
             if (enableLogging) {
                 logger.warn(
                     `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
@@ -123,6 +130,9 @@ export function opfsBackgroundFetch(
 
         async backgroundfetchabort(event, context: PluginContext): Promise<void> {
             const logger = context.logger ?? console;
+            notifyClients(OPFS_MSG_BACKGROUND_FETCH_ABORTED, {
+                registrationId: event.registration.id,
+            });
             if (enableLogging) {
                 logger.debug(
                     `opfsBackgroundFetch: background fetch aborted, id=${event.registration.id}`

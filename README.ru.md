@@ -208,7 +208,7 @@ type Unsubscribe = () => void;
     onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
     ```
 
-- **`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из чёрного списка (ресурс не кешируем).
+- **`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из blocklist (ресурс не кешируем).
 
     ```ts
     type EventData = {
@@ -217,6 +217,20 @@ type Unsubscribe = () => void;
     };
 
     onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
+
+- **`onOPFSBackgroundFetchFailed`** — подписка на уведомление о завершении Background Fetch с ошибкой.
+
+    ```ts
+    type EventData = { type: string; registrationId?: string };
+    onOPFSBackgroundFetchFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
+
+- **`onOPFSBackgroundFetchAborted`** — подписка на уведомление об отмене Background Fetch.
+
+    ```ts
+    type EventData = { type: string; registrationId?: string };
+    onOPFSBackgroundFetchAborted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
     ```
 
 ### Утилиты управления кэшем
@@ -248,7 +262,7 @@ type Unsubscribe = () => void;
     deleteFromOpfsCache(url: string): Promise<void>
     ```
 
-Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
+Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`, `OPFS_MSG_BACKGROUND_FETCH_FAILED`, `OPFS_MSG_BACKGROUND_FETCH_ABORTED`.
 
 ### Оповещения вкладок о квоте и лимитах
 

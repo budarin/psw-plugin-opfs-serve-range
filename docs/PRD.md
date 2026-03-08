@@ -21,7 +21,7 @@ Large media and heavy assets are typically requested in chunks via **HTTP Range*
 - **Serve Range requests from OPFS** when the resource is already cached, with minimal read (only the requested bytes) and optional Cache-Control for 206 responses.
 - **Cache full responses (200 only)** into OPFS from network or Background Fetch; support **one background full GET per URL** when serving 206 from network so that the full file is eventually cached.
 - **Respect quota and limits:** use a configurable fraction of origin quota; evict by **LRU** (lastAccessed) among **evictable** entries only; support **pinned** URLs that are never evicted.
-- **Notify the client** about quota exceeded, write skipped, eviction completed, write failed, and blacklist (skip) so the UI can inform the user.
+- **Notify the client** about quota exceeded, write skipped, eviction completed, write failed, blocklist (skip), and Background Fetch failed/aborted so the UI can inform the user.
 - **Support precache** at SW install and **Background Fetch** so that “download for offline” and “preload critical assets” are first-class scenarios.
 - **Expose utilities** for custom OPFS read/write plugins (same format, key, metadata) and for client-side cache listing/deletion.
 
@@ -56,8 +56,8 @@ Below are the main usage scenarios. They are not ordered by priority; the plugin
 | **UC-1** | **First request (resource not in cache)** | Client (e.g. player) | Sends GET with `Range`. `opfsServeRange` does not find the file → returns `undefined`. `opfsRangeFromNetworkAndCache` fetches from network, streams the response to the client (206 or 200→206), and may start a background full GET to write the full file to OPFS. | Client gets the range; on next request for the same URL the file may already be in OPFS. |
 | **UC-2** | **Repeat request (resource in cache)** | Client | Sends GET with `Range`. `opfsServeRange` finds the file in OPFS, reads only the requested bytes, returns 206, and updates `lastAccessed` in the file footer in the background. | Fast response from disk; no network. |
 | **UC-3** | **Download for offline (Background Fetch)** | User / app | User triggers “download for offline”. App starts a Background Fetch. When it completes, `opfsBackgroundFetch` writes the responses to OPFS. | Later, Range requests for those URLs are served by `opfsServeRange` without network. |
-| **UC-4** | **Cache full, need space for new file** | SW (plugin) | A new 200 response must be cached. If size is known: `ensureSpaceForWrite` runs first, evicts a minimal LRU set (evictable only), then write. If size unknown: stream write; on QuotaExceeded, partial file is removed and LRU eviction frees space (or URL is blacklisted if eviction would not help). | New file is cached; pinned entries are never evicted. |
-| **UC-5** | **Quota exceeded, URL blacklisted** | SW (plugin) | Stream write fails with QuotaExceeded; `bytesWritten ≥ totalCacheSize`. URL is added to blacklist; clients are notified. On later requests for this URL, the plugin does not attempt to cache again and notifies (skip). | UI can inform the user; no repeated failed writes. |
+| **UC-4** | **Cache full, need space for new file** | SW (plugin) | A new 200 response must be cached. If size is known: `ensureSpaceForWrite` runs first, evicts a minimal LRU set (evictable only), then write. If size unknown: stream write; on QuotaExceeded, partial file is removed and LRU eviction frees space (or URL is added to blocklist if eviction would not help). | New file is cached; pinned entries are never evicted. |
+| **UC-5** | **Quota exceeded, URL in blocklist** | SW (plugin) | Stream write fails with QuotaExceeded; `bytesWritten ≥ totalCacheSize`. URL is added to blocklist; clients are notified. On later requests for this URL, the plugin does not attempt to cache again and notifies (skip). | UI can inform the user; no repeated failed writes. |
 
 ---
 
@@ -75,20 +75,20 @@ Below are the main usage scenarios. They are not ordered by priority; the plugin
 - **FR-5** Cache limit MUST be computed as `min(quota × maxCacheFraction, quota − usage)` from `navigator.storage.estimate()`; `maxCacheFraction` and `folderName` MUST be configurable via `configureOpfs`.
 - **FR-6** Eviction MUST be LRU by `lastAccessed`; only entries with `evictable !== false` MUST be considered for eviction; the set of files to remove MUST be minimal (enough to free required space).
 - **FR-7** When writing with **known size**, MUST run `ensureSpaceForWrite` before write; if it is impossible to free enough space, MUST NOT start the write and MUST notify clients (e.g. write skipped).
-- **FR-8** When writing without known size (stream) and QuotaExceeded: MUST remove the partial file; if `bytesWritten ≥ totalCacheSize` MUST add URL to blacklist and MUST NOT evict; otherwise MUST evict (e.g. bytesWritten + headroom) by LRU and MUST notify clients as specified.
+- **FR-8** When writing without known size (stream) and QuotaExceeded: MUST remove the partial file; if `bytesWritten ≥ totalCacheSize` MUST add URL to blocklist and MUST NOT evict; otherwise MUST evict (e.g. bytesWritten + headroom) by LRU and MUST notify clients as specified.
 
-### 6.3 Pinned and blacklist
+### 6.3 Pinned and blocklist
 
 - **FR-9** Plugins that write to OPFS (opfsRangeFromNetworkAndCache, opfsBackgroundFetch) MUST support a **pinned** option (glob patterns); URLs matching pinned MUST be stored with `evictable: false` and MUST NOT be included in the eviction set.
-- **FR-10** Before starting a cache write without Content-Length, if the URL is **blacklisted**, MUST NOT write and MUST notify clients (e.g. OPFS_MSG_SKIP_QUOTA_EXCEEDED).
+- **FR-10** Before starting a cache write without Content-Length, if the URL is **blocklisted**, MUST NOT write and MUST notify clients (e.g. OPFS_MSG_SKIP_QUOTA_EXCEEDED).
 
 ### 6.4 Background Fetch
 
-- **FR-11** **opfsBackgroundFetch** MUST, on Background Fetch success, for each record passing include/exclude, write to OPFS (same format and options as other writers); MUST support pinned and blacklist check.
+- **FR-11** **opfsBackgroundFetch** MUST, on Background Fetch success, for each record passing include/exclude, write to OPFS (same format and options as other writers); MUST support pinned and blocklist check.
 
 ### 6.5 Client and notifications
 
-- **FR-13** Service worker MUST notify clients (e.g. via `notifyClients`) for: quota exceeded, write skipped (size), cache limit reached, eviction completed, write failed, skip (blacklisted URL). Message types MUST be documented and client helpers MUST be provided for subscription.
+- **FR-13** Service worker MUST notify clients (e.g. via `notifyClients`) for: quota exceeded, write skipped (size), cache limit reached, eviction completed, write failed, skip (blocklisted URL), Background Fetch failed, Background Fetch aborted. Message types MUST be documented and client helpers MUST be provided for subscription.
 - **FR-14** Client MUST be able to: list cached resources (from metadata), check by URL, delete by URL; and subscribe to the notification types above with typed handlers and unsubscribe.
 
 ### 6.6 Format and compatibility
@@ -124,7 +124,7 @@ The plugin parses the `Range` request header and supports **only** these forms (
 
 - **SC-1** Range requests for a cached URL are served from OPFS with correct 206 (correct byte range and Content-Range); no footer bytes are sent to the client.
 - **SC-2** Eviction is predictable: only evictable entries, LRU by lastAccessed, minimal set; pinned entries are never evicted.
-- **SC-3** Clients receive notifications for all specified events (quota exceeded, write skipped, eviction completed, write failed, skip/blacklist) so the UI can react.
+- **SC-3** Clients receive notifications for all specified events (quota exceeded, write skipped, eviction completed, write failed, skip/blocklist, Background Fetch failed/aborted) so the UI can react.
 - **SC-4** Integrators can combine opfsServeRange, opfsRangeFromNetworkAndCache, opfsBackgroundFetch with include/exclude/pinned and get consistent behavior; custom plugins can use the same format and utilities.
 - **SC-5** In environments without OPFS, the app continues to work without the plugin (no throw); with OPFS, cache stays within the configured limit and does not grow unbounded.
 

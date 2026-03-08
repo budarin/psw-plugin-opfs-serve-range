@@ -83,7 +83,7 @@ The stream is not re‑read – there is no automatic retry for **the same** res
 
 For **streaming** responses (without `Content-Length`) after QuotaExceeded we might determine that “even deleting the entire cache would not be enough” (bytesWritten ≥ totalCacheSize). In that case:
 
-- The **URL is added to a blacklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
+- The **URL is added to a blocklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
 - For each such **repeat request**, a **quota‑related notification** is sent to clients (for example, that the resource is too large to cache). The application can show a UI hint like “not enough space to cache this resource”.
 
 ---
@@ -96,7 +96,7 @@ The service worker sends messages to all client windows using the `notifyClients
 - Write refused when size is known (the file would not fit even after clearing the cache).
 - Cache limit reached / eviction performed.
 - Write error (including after deleting a partial file).
-- Repeat request for a URL from the “blacklist” – a quota‑related message is sent so the client can show a warning.
+- Repeat request for a URL from the “blocklist” – a quota‑related message is sent so the client can show a warning.
 
 On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). The full list of client utilities (including cache management helpers such as `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache`) with usage examples is described in the **Client utilities** section of the README and in the TypeScript definitions.
 
@@ -105,7 +105,7 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 ## 8. Edge cases
 
 - **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
-- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blacklisting follows the rules above.
+- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blocklisting follows the rules above.
 - **Updating `lastAccessed`** on read never blocks the response – it runs in the background (written to the eviction index only, not the file).
 
 ---
@@ -197,7 +197,7 @@ The stream is not re‑read – there is no automatic retry for **the same** res
 
 For **streaming** responses (without `Content-Length`) after QuotaExceeded we might determine that “even deleting the entire cache would not be enough” (bytesWritten ≥ totalCacheSize). In that case:
 
-- The **URL is added to a blacklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
+- The **URL is added to a blocklist** (kept in memory for the lifetime of the service worker). On subsequent attempts to cache this URL, the plugin **does not start** writing it to OPFS again – it avoids wasting bandwidth and time.
 - For each such **repeat request**, a **quota‑related notification** is sent to clients (for example, that the resource is too large to cache). The application can show a UI hint like “not enough space to cache this resource”.
 
 ---
@@ -210,7 +210,7 @@ The service worker sends messages to all client windows using the `notifyClients
 - Write refused when size is known (the file would not fit even after clearing the cache).
 - Cache limit reached / eviction performed.
 - Write error (including after deleting a partial file).
-- Repeat request for a URL from the “blacklist” – a quota‑related message is sent so the client can show a warning.
+- Repeat request for a URL from the “blocklist” – a quota‑related message is sent so the client can show a warning.
 
 On the client, you can subscribe to these events via **typed handlers** exposed by this package (for example, `onOPFSQuotaExceeded`, `onOPFSWriteSkipped`, `onOPFSCacheLimitReached`, `onOPFSWriteFailed`, etc.). Details and examples are provided in the README and type definitions.
 
@@ -219,7 +219,7 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 ## 8. Edge cases
 
 - **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
-- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blacklisting follows the rules above.
+- **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and blocklisting follows the rules above.
 - **Updating `lastAccessed`** on read never blocks the response – it runs in the background (written to the eviction index only, not the file).
 
 ---
@@ -338,7 +338,7 @@ When a file is **read** (a Range response served from cache), **`lastAccessed`**
 ## 8. Крайние случаи
 
 - **Квота меньше одного файла** — при записи получим QuotaExceeded; частичный файл удалится, при необходимости URL попадёт в список «не кешируем», клиент получит оповещение.
-- **Частичная запись при потоке** — всегда удаляется; решение об эвикции и чёрном списке принимается по правилам выше.
+- **Частичная запись при потоке** — всегда удаляется; решение об эвикции и blocklist принимается по правилам выше.
 - **Обновление lastAccessed** при чтении не блокирует ответ — выполняется в фоне.
 
 ---

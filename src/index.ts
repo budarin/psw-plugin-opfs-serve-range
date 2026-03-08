@@ -48,8 +48,8 @@ export {
 export { urlToOpfsKey } from './opfsKey.js';
 
 export {
-    isBlacklisted,
-    addToBlacklist,
+    isBlocklisted,
+    addToBlocklist,
     getStorageEstimate,
     getCacheLimit,
 } from './opfsLru.js';
@@ -65,6 +65,8 @@ export {
     OPFS_MSG_EVICTION_COMPLETED,
     OPFS_MSG_WRITE_FAILED,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+    OPFS_MSG_BACKGROUND_FETCH_FAILED,
+    OPFS_MSG_BACKGROUND_FETCH_ABORTED,
 } from './opfsMessages.js';
 export type { OpfsMessageType } from './opfsMessages.js';
 export type { WriteToOpfsOptions } from './opfsWrite.js';

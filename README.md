@@ -218,7 +218,7 @@ type Unsubscribe = () => void;
     onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
     ```
 
-- **`onOPFSSkipQuotaExceeded`** — subscribe to notification on repeat request for a blacklisted URL (resource not cached).
+- **`onOPFSSkipQuotaExceeded`** — subscribe to notification on repeat request for a blocklisted URL (resource not cached).
 
     ```ts
     type EventData = {
@@ -227,6 +227,20 @@ type Unsubscribe = () => void;
     };
 
     onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
+
+- **`onOPFSBackgroundFetchFailed`** — subscribe to notification when a Background Fetch completes with failure.
+
+    ```ts
+    type EventData = { type: string; registrationId?: string };
+    onOPFSBackgroundFetchFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
+    ```
+
+- **`onOPFSBackgroundFetchAborted`** — subscribe to notification when a Background Fetch is aborted.
+
+    ```ts
+    type EventData = { type: string; registrationId?: string };
+    onOPFSBackgroundFetchAborted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
     ```
 
 ### Cache management utilities
@@ -258,7 +272,7 @@ Functions to list cached resources, check by URL, and remove by URL. Called from
     deleteFromOpfsCache(url: string): Promise<void>
     ```
 
-Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`.
+Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`, `OPFS_MSG_BACKGROUND_FETCH_FAILED`, `OPFS_MSG_BACKGROUND_FETCH_ABORTED`.
 
 ### Tab notifications about quota and limits
 
