@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0 - 2025-03-08
+
+- **Breaking:** Removed **opfsPrecache** plugin and `OpfsPrecacheOptions` type. The package is focused on range requests and OPFS for large files; precaching at install was redundant for small assets (use Cache API) and unsuitable for large ones. Use **opfsServeRange** + **opfsRangeFromNetworkAndCache** for on-demand caching, or **opfsBackgroundFetch** for explicit “download for offline” flows.
+- **Docs:** README.md, README.ru.md, reference.mdc, and docs/PRD.md updated (opfsPrecache removed from descriptions, plugin list, use cases, and requirements).
+
 ## 1.5.1 - 2025-03-08
 
 - **Eviction index:** When index is missing on serve, it is rebuilt from the cache dir so `_eviction_index.json` appears on first watch after plugin update. **lastAccessed** updates on serve are throttled to at most once per 5 seconds per key (reduces index writes during seeking).

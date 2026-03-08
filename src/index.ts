@@ -272,8 +272,6 @@ export {
 } from './opfsRangeUtil.js';
 export type { RangeSpec, Build206Options } from './opfsRangeUtil.js';
 export { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
-export { opfsPrecache } from './opfsPrecache.js';
-export type { OpfsPrecacheOptions } from './opfsPrecache.js';
 export { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 export type { OpfsRangeFromNetworkAndCacheOptions } from './opfsRangeFromNetworkAndCache.js';
 export { opfsBackgroundFetch } from './opfsBackgroundFetch.js';

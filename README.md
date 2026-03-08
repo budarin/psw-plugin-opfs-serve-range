@@ -19,7 +19,6 @@ Unlike `@budarin/psw-plugin-serve-range-requests`, which uses the Cache API: cac
 ### What this package provides
 
 - **opfsServeRange** – reads files from OPFS and serves byte ranges.
-- **opfsPrecache** – during SW install, fetches a list of URLs and writes them to OPFS. Downloading large files at install time may take a long time – the UI should either warn users to wait or avoid putting huge files into precache. It is also important to note that if OPFS runs out of space while writing during the `install` phase and the operation fails, the whole service worker install fails (the SW is not installed). Use `opfsPrecache` only for resources that are guaranteed to fit even on small, partially filled devices; use `opfsRangeFromNetworkAndCache` or background downloads for heavy files.
 - **opfsRangeFromNetworkAndCache** – handles requests that `opfsServeRange` did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally starts a full background download into OPFS; only fully downloaded files are cached. If the tab or browser is closed or the network drops, the download is aborted; the next request for the same URL starts a new full download (which may be slow or expensive for large files). If you need downloads that survive tab or browser closes, or your files are very large, use the Background Fetch API utilities from `@budarin/pluggable-serviceworker`. **Note:** when the server returns `200` for a Range request without `Content-Length`, the response body is buffered fully in memory (`response.blob()`) to serve the range — avoid very large files without `Content-Length` to prevent high memory usage.
 - **opfsBackgroundFetch** – on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by `opfsServeRange`.
 - **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **getRoot**, **isOpfsAvailable** – low‑level utilities for writing your own OPFS plugins; **getRoot()** returns a cached OPFS root (avoids repeated navigator.storage.getDirectory calls); **isOpfsAvailable()** provides a synchronous check for OPFS support.
@@ -311,28 +310,6 @@ Global cache settings (folder name, quota fraction) are set in **configureOpfs({
     }): Plugin | undefined
     ```
 
-- **`opfsPrecache`** — during SW install, fetches a list of URLs and writes them to OPFS.
-
-    ```ts
-    opfsPrecache(options: {
-      assets: string[] | (() => Promise<string[]>); // array of asset URLs or function
-      order?: number;
-      enableLogging?: boolean;
-      pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
-    }): Plugin | undefined
-    ```
-
-- **`opfsPrecache`** — during SW install, fetches a list of URLs and writes them to OPFS.
-
-    ```ts
-    opfsPrecache(options: {
-      assets: string[] | (() => Promise<string[]>); // array of asset URLs or function
-      order?: number;
-      enableLogging?: boolean;
-      pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
-    }): Plugin | undefined
-    ```
-
 - **`opfsRangeFromNetworkAndCache`** — handles requests that opfsServeRange did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally fills OPFS in the background.
 
     ```ts
@@ -366,11 +343,6 @@ Both caching plugins that write to OPFS (`opfsRangeFromNetworkAndCache`, `opfsBa
 Example: mark important media files as pinned so they are never evicted, while allowing other cached media to be evicted:
 
 ```typescript
-opfsPrecache({
-    assets: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
-    pinned: ['/assets/media/featured-video.mp4'], // featured content won't be evicted
-});
-
 opfsRangeFromNetworkAndCache({
     include: ['*.mp4', '*.webm'],
     pinned: ['/assets/media/featured/**'], // featured media files won't be evicted

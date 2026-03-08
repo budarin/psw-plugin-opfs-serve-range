@@ -55,10 +55,9 @@ Below are the main usage scenarios. They are not ordered by priority; the plugin
 |---|----------|-----|--------------|--------|
 | **UC-1** | **First request (resource not in cache)** | Client (e.g. player) | Sends GET with `Range`. `opfsServeRange` does not find the file → returns `undefined`. `opfsRangeFromNetworkAndCache` fetches from network, streams the response to the client (206 or 200→206), and may start a background full GET to write the full file to OPFS. | Client gets the range; on next request for the same URL the file may already be in OPFS. |
 | **UC-2** | **Repeat request (resource in cache)** | Client | Sends GET with `Range`. `opfsServeRange` finds the file in OPFS, reads only the requested bytes, returns 206, and updates `lastAccessed` in the file footer in the background. | Fast response from disk; no network. |
-| **UC-3** | **Precache at install** | Integrator / SW | At SW install, `opfsPrecache` runs: fetches a configured list of URLs and writes 200 responses to OPFS (with optional `pinned`). | Critical assets are in cache before the user opens the app. Large files can make install slow; only resources that are expected to fit should be listed. |
-| **UC-4** | **Download for offline (Background Fetch)** | User / app | User triggers “download for offline”. App starts a Background Fetch. When it completes, `opfsBackgroundFetch` writes the responses to OPFS. | Later, Range requests for those URLs are served by `opfsServeRange` without network. |
-| **UC-5** | **Cache full, need space for new file** | SW (plugin) | A new 200 response must be cached. If size is known: `ensureSpaceForWrite` runs first, evicts a minimal LRU set (evictable only), then write. If size unknown: stream write; on QuotaExceeded, partial file is removed and LRU eviction frees space (or URL is blacklisted if eviction would not help). | New file is cached; pinned entries are never evicted. |
-| **UC-6** | **Quota exceeded, URL blacklisted** | SW (plugin) | Stream write fails with QuotaExceeded; `bytesWritten ≥ totalCacheSize`. URL is added to blacklist; clients are notified. On later requests for this URL, the plugin does not attempt to cache again and notifies (skip). | UI can inform the user; no repeated failed writes. |
+| **UC-3** | **Download for offline (Background Fetch)** | User / app | User triggers “download for offline”. App starts a Background Fetch. When it completes, `opfsBackgroundFetch` writes the responses to OPFS. | Later, Range requests for those URLs are served by `opfsServeRange` without network. |
+| **UC-4** | **Cache full, need space for new file** | SW (plugin) | A new 200 response must be cached. If size is known: `ensureSpaceForWrite` runs first, evicts a minimal LRU set (evictable only), then write. If size unknown: stream write; on QuotaExceeded, partial file is removed and LRU eviction frees space (or URL is blacklisted if eviction would not help). | New file is cached; pinned entries are never evicted. |
+| **UC-5** | **Quota exceeded, URL blacklisted** | SW (plugin) | Stream write fails with QuotaExceeded; `bytesWritten ≥ totalCacheSize`. URL is added to blacklist; clients are notified. On later requests for this URL, the plugin does not attempt to cache again and notifies (skip). | UI can inform the user; no repeated failed writes. |
 
 ---
 
@@ -80,13 +79,12 @@ Below are the main usage scenarios. They are not ordered by priority; the plugin
 
 ### 6.3 Pinned and blacklist
 
-- **FR-9** Plugins that write to OPFS (opfsRangeFromNetworkAndCache, opfsPrecache, opfsBackgroundFetch) MUST support a **pinned** option (glob patterns); URLs matching pinned MUST be stored with `evictable: false` and MUST NOT be included in the eviction set.
+- **FR-9** Plugins that write to OPFS (opfsRangeFromNetworkAndCache, opfsBackgroundFetch) MUST support a **pinned** option (glob patterns); URLs matching pinned MUST be stored with `evictable: false` and MUST NOT be included in the eviction set.
 - **FR-10** Before starting a cache write without Content-Length, if the URL is **blacklisted**, MUST NOT write and MUST notify clients (e.g. OPFS_MSG_SKIP_QUOTA_EXCEEDED).
 
-### 6.4 Precache and Background Fetch
+### 6.4 Background Fetch
 
-- **FR-11** **opfsPrecache** MUST run at SW install; MUST fetch given URLs (list or async function) and write 200 responses to OPFS; MUST support `pinned` and include/exclude; behavior when OPFS write fails during install (e.g. whole install fails) is as per platform.
-- **FR-12** **opfsBackgroundFetch** MUST, on Background Fetch success, for each record passing include/exclude, write to OPFS (same format and options as other writers); MUST support pinned and blacklist check.
+- **FR-11** **opfsBackgroundFetch** MUST, on Background Fetch success, for each record passing include/exclude, write to OPFS (same format and options as other writers); MUST support pinned and blacklist check.
 
 ### 6.5 Client and notifications
 
@@ -127,7 +125,7 @@ The plugin parses the `Range` request header and supports **only** these forms (
 - **SC-1** Range requests for a cached URL are served from OPFS with correct 206 (correct byte range and Content-Range); no footer bytes are sent to the client.
 - **SC-2** Eviction is predictable: only evictable entries, LRU by lastAccessed, minimal set; pinned entries are never evicted.
 - **SC-3** Clients receive notifications for all specified events (quota exceeded, write skipped, eviction completed, write failed, skip/blacklist) so the UI can react.
-- **SC-4** Integrators can combine opfsServeRange, opfsRangeFromNetworkAndCache, opfsPrecache, opfsBackgroundFetch with include/exclude/pinned and get consistent behavior; custom plugins can use the same format and utilities.
+- **SC-4** Integrators can combine opfsServeRange, opfsRangeFromNetworkAndCache, opfsBackgroundFetch with include/exclude/pinned and get consistent behavior; custom plugins can use the same format and utilities.
 - **SC-5** In environments without OPFS, the app continues to work without the plugin (no throw); with OPFS, cache stays within the configured limit and does not grow unbounded.
 
 ---
