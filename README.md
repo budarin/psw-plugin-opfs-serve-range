@@ -68,7 +68,7 @@ initServiceWorker(
 );
 ```
 
-Here `opfsServeRange` serves ranges from OPFS when the file is already cached; `opfsRangeFromNetworkAndCache` goes to the network when the file is not cached yet, streams the response to the client, and optionally fills OPFS in the background so that subsequent requests are served from OPFS. You can add **opfsPrecache** or **opfsBackgroundFetch** as needed; the set and order of plugins are fully configurable.
+Here `opfsServeRange` serves ranges from OPFS when the file is already cached; `opfsRangeFromNetworkAndCache` goes to the network when the file is not cached yet, streams the response to the client, and optionally fills OPFS in the background so that subsequent requests are served from OPFS. You can add **opfsBackgroundFetch** as needed; the set and order of plugins are fully configurable.
 
 ### Example: “Download for offline” (Background Fetch) + Range playback
 
@@ -315,7 +315,18 @@ Global cache settings (folder name, quota fraction) are set in **configureOpfs({
 
     ```ts
     opfsPrecache(options: {
-      urls: string[] | (() => Promise<string[]>); // array of URLs or function
+      assets: string[] | (() => Promise<string[]>); // array of asset URLs or function
+      order?: number;
+      enableLogging?: boolean;
+      pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
+    }): Plugin | undefined
+    ```
+
+- **`opfsPrecache`** — during SW install, fetches a list of URLs and writes them to OPFS.
+
+    ```ts
+    opfsPrecache(options: {
+      assets: string[] | (() => Promise<string[]>); // array of asset URLs or function
       order?: number;
       enableLogging?: boolean;
       pinned?: string[]; // glob patterns for URLs protected from eviction (see «Pinned resources»)
@@ -350,13 +361,13 @@ To trigger downloads from the client: `@budarin/pluggable-serviceworker/client/b
 
 ### Pinned resources (eviction protection)
 
-All three caching plugins (`opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) support the `pinned` option: an array of glob patterns for URLs that should never be evicted by the LRU eviction algorithm. Resources matching these patterns are stored with `evictable: false` in metadata and will not be removed even when the cache limit is reached.
+Both caching plugins that write to OPFS (`opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) support the `pinned` option: an array of glob patterns for URLs that should never be evicted by the LRU eviction algorithm. Resources matching these patterns are stored with `evictable: false` in metadata and will not be removed even when the cache limit is reached.
 
 Example: mark important media files as pinned so they are never evicted, while allowing other cached media to be evicted:
 
 ```typescript
 opfsPrecache({
-    urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+    assets: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
     pinned: ['/assets/media/featured-video.mp4'], // featured content won't be evicted
 });
 

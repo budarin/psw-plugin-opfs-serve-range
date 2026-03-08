@@ -295,7 +295,14 @@ export function opfsRangeFromNetworkAndCache(
                 }
 
                 return response;
-            } catch {
+            } catch (err) {
+                if (enableLogging) {
+                    logger.error(
+                        'opfsRangeFromNetworkAndCache: fetch failed',
+                        url,
+                        err
+                    );
+                }
                 return;
             }
         },

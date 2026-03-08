@@ -305,7 +305,7 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
     ```ts
     opfsPrecache(options: {
-      urls: string[] | (() => Promise<string[]>); // список URL или функция
+      assets: string[] | (() => Promise<string[]>); // список URL (assets) или функция
       order?: number;
       enableLogging?: boolean;
       pinned?: string[]; // glob-паттерны URL, защищённых от эвикции (см. «Закреплённые ресурсы»)
@@ -346,7 +346,7 @@ const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
 
 ```typescript
 opfsPrecache({
-    urls: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
+    assets: ['/assets/media/featured-video.mp4', '/assets/media/trailer.mp4'],
     pinned: ['/assets/media/featured-video.mp4'], // важный контент не будет эвиктиться
 });
 

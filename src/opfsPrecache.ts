@@ -11,9 +11,9 @@ import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 
 export interface OpfsPrecacheOptions {
     /**
-     * Список URL для предкеша или функция, возвращающая его (например, из манифеста).
+     * Список URL (assets) для предкеша или функция, возвращающая его (например, из манифеста).
      */
-    urls: string[] | (() => Promise<string[]>);
+    assets: string[] | (() => Promise<string[]>);
     /**
      * Порядок выполнения (по умолчанию 0 — выполняется при install).
      */
@@ -38,7 +38,7 @@ export function opfsPrecache(
     if (!isOpfsAvailable()) {
         return undefined;
     }
-    const { urls, order = 0, enableLogging = false, pinned } = options;
+    const { assets, order = 0, enableLogging = false, pinned } = options;
 
     return {
         name: 'opfs-precache',
@@ -47,7 +47,7 @@ export function opfsPrecache(
         async install(_event: ExtendableEvent, context: PluginContext): Promise<void> {
             const logger = context.logger ?? console;
             const list =
-                typeof urls === 'function' ? await urls() : urls;
+                typeof assets === 'function' ? await assets() : assets;
             if (list.length === 0) {
                 return;
             }

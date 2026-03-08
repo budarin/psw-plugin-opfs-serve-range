@@ -3,6 +3,7 @@
  */
 
 import { OPFS_FOLDER_NAME } from './opfsFormat.js';
+import { invalidateCacheForDir } from './opfsEvictionIndex.js';
 
 const DEFAULT_MAX_CACHE_FRACTION = 0.5;
 
@@ -135,10 +136,12 @@ export async function getOpfsDir(
 /**
  * Удаляет папку плагина в OPFS со всем содержимым. Очищает кеш «одним махом».
  * Используется имя папки из configureOpfs({ folderName }) или OPFS_FOLDER_NAME.
+ * Сбрасывает in-memory кеш индекса эвикции для этой папки.
  */
 export async function clearOpfsCache(): Promise<void> {
     const root = await getRoot();
     const name = getResolvedFolderName();
+    invalidateCacheForDir(name);
     try {
         await root.removeEntry(name, { recursive: true });
     } catch {

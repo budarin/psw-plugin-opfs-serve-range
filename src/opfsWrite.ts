@@ -12,7 +12,6 @@ import {
 } from './opfsFormat.js';
 import {
     ensureSpaceForWrite,
-    getTotalCacheSizeWithIndex,
     computeEvictionSet,
     evictFiles,
     getCacheLimit,
@@ -22,6 +21,7 @@ import {
 import {
     addToEvictionIndex,
     getEntriesForEviction,
+    registerFileInCache,
     removeFromEvictionIndex,
 } from './opfsEvictionIndex.js';
 import {
@@ -112,9 +112,12 @@ export async function writeToOpfs(
 
     try {
         await bodyStream.pipeTo(wrapper);
+        const file = await handle.getFile();
+        const now = Date.now();
         if (metadata.evictable !== false) {
-            const file = await handle.getFile();
-            await addToEvictionIndex(dir, key, file.size, Date.now());
+            await addToEvictionIndex(dir, key, file.size, now);
+        } else {
+            await registerFileInCache(dir, key, file.size, false, now);
         }
     } catch (err) {
         const isQuotaExceeded =
@@ -126,8 +129,7 @@ export async function writeToOpfs(
             // ignore
         }
         if (isQuotaExceeded && url !== undefined) {
-            const entries = await getEntriesForEviction(dir);
-            const totalCacheSize = await getTotalCacheSizeWithIndex(dir, entries);
+            const { entries, totalSize: totalCacheSize } = await getEntriesForEviction(dir);
             const bytesWritten = bodySize;
             if (bytesWritten >= totalCacheSize) {
                 addToBlacklist(url);

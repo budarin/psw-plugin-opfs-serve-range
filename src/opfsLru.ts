@@ -149,34 +149,6 @@ export interface EnsureSpaceOptions {
     onEvicted?: (keys: string[]) => void;
 }
 
-export async function getTotalCacheSizeWithIndex(
-    dir: FileSystemDirectoryHandle,
-    indexEntries: EvictionIndexEntry[]
-): Promise<number> {
-    const indexMap = new Map(indexEntries.map((e) => [e.key, e.size]));
-    let total = 0;
-    for await (const [name, handle] of dir.entries()) {
-        if (name === EVICTION_INDEX_FILENAME) {
-            continue;
-        }
-        if (handle.kind !== 'file') {
-            continue;
-        }
-        const size = indexMap.get(name);
-        if (size !== undefined) {
-            total += size;
-        } else {
-            try {
-                const file = await (handle as FileSystemFileHandle).getFile();
-                total += file.size;
-            } catch {
-                // пропускаем
-            }
-        }
-    }
-    return total;
-}
-
 /**
  * Проверяет, влезет ли новый файл после эвикции. Если да — выполняет эвикцию по индексу и возвращает ok: true.
  * Если даже после удаления всего кеша не влезет — ok: false, reason для оповещения.
@@ -189,8 +161,7 @@ export async function ensureSpaceForWrite(
     const { onEvicted } = options;
     const estimate = await getStorageEstimate();
     const limit = getCacheLimit(estimate);
-    const entries = await getEntriesForEviction(dir);
-    const totalSize = await getTotalCacheSizeWithIndex(dir, entries);
+    const { entries, totalSize } = await getEntriesForEviction(dir);
 
     const needToFree = Math.max(
         0,
