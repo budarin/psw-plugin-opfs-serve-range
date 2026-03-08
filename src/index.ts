@@ -10,12 +10,7 @@ import { HEADER_RANGE } from '@budarin/http-constants/headers';
 
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
-import {
-    OPFS_META_FOOTER_LENGTH,
-    MAX_META_JSON_BYTES,
-    readMetadataFromFileFooter as readFooter,
-    type OpfsMetadata,
-} from './opfsFormat.js';
+import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import { getOpfsDir, getRoot, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import {
@@ -110,36 +105,6 @@ function ifRangeMatches(
     return false;
 }
 
-
-/**
- * Обновляет lastAccessed в футере файла (в фоне, параллельно с отдачей ответа).
- */
-async function updateLastAccessedInBackground(
-    handle: FileSystemFileHandle,
-    metadata: OpfsMetadata,
-    bodySize: number
-): Promise<void> {
-    try {
-        const meta: OpfsMetadata = { ...metadata, lastAccessed: Date.now() };
-        const metaJson = JSON.stringify(meta);
-        const metaBytes = new TextEncoder().encode(metaJson);
-        if (metaBytes.length > MAX_META_JSON_BYTES) {
-            return;
-        }
-        const lengthAb = new ArrayBuffer(OPFS_META_FOOTER_LENGTH);
-        new DataView(lengthAb).setUint32(0, metaBytes.length, true);
-        const writable = await handle.createWritable({ keepExistingData: true });
-        await writable.seek(bodySize);
-        await writable.write(
-            metaBytes as Parameters<FileSystemWritableFileStream['write']>[0]
-        );
-        await writable.write(lengthAb);
-        await writable.truncate(bodySize + metaBytes.length + OPFS_META_FOOTER_LENGTH);
-        await writable.close();
-    } catch {
-        // игнорируем ошибки фонового обновления
-    }
-}
 
 /**
  * Плагин: перехватывает GET с Range и отдаёт диапазон из OPFS.
@@ -258,16 +223,8 @@ export function opfsServeRange(
                         }),
                     }
                 );
-
-                if (metadata && event.waitUntil) {
-                    event.waitUntil(
-                        updateLastAccessedInBackground(
-                            fileHandle,
-                            metadata,
-                            bodySize
-                        )
-                    );
-                }
+                // Не обновляем lastAccessed при отдаче: одновременное чтение и запись в OPFS
+                // даёт NotReadableError при перемотке; LRU будет менее точным.
 
                 if (enableLogging) {
                     logger.debug(
