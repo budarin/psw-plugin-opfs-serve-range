@@ -12,14 +12,18 @@ import {
 } from './opfsFormat.js';
 import {
     ensureSpaceForWrite,
-    listCacheFilesWithMeta,
-    getTotalCacheSize,
+    getTotalCacheSizeWithIndex,
     computeEvictionSet,
     evictFiles,
     getCacheLimit,
     getStorageEstimate,
     addToBlacklist,
 } from './opfsLru.js';
+import {
+    addToEvictionIndex,
+    getEntriesForEviction,
+    removeFromEvictionIndex,
+} from './opfsEvictionIndex.js';
 import {
     OPFS_MSG_WRITE_SKIPPED_SIZE,
     OPFS_MSG_QUOTA_EXCEEDED,
@@ -108,6 +112,10 @@ export async function writeToOpfs(
 
     try {
         await bodyStream.pipeTo(wrapper);
+        if (metadata.evictable !== false) {
+            const file = await handle.getFile();
+            await addToEvictionIndex(dir, key, file.size, Date.now());
+        }
     } catch (err) {
         const isQuotaExceeded =
             err instanceof Error &&
@@ -118,8 +126,8 @@ export async function writeToOpfs(
             // ignore
         }
         if (isQuotaExceeded && url !== undefined) {
-            const entries = await listCacheFilesWithMeta(dir);
-            const totalCacheSize = getTotalCacheSize(entries);
+            const entries = await getEntriesForEviction(dir);
+            const totalCacheSize = await getTotalCacheSizeWithIndex(dir, entries);
             const bytesWritten = bodySize;
             if (bytesWritten >= totalCacheSize) {
                 addToBlacklist(url);
@@ -131,6 +139,7 @@ export async function writeToOpfs(
                 const needToFree = bytesWritten + headroom;
                 const keysToDelete = computeEvictionSet(entries, needToFree);
                 await evictFiles(dir, keysToDelete);
+                await removeFromEvictionIndex(dir, keysToDelete);
             }
         }
         notifyClients(OPFS_MSG_WRITE_FAILED, { url, reason: err instanceof Error ? err.message : String(err) });

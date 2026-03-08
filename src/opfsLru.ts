@@ -1,10 +1,16 @@
 /**
  * LRU и лимиты кеша OPFS: список файлов, расчёт эвикции, чёрный список.
- * Без индексного файла — данные из метаданных в футере каждого файла.
+ * Для эвикции используется индекс _eviction_index.json (только evictable); при отсутствии/повреждении пересобирается.
  */
 
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import { getMaxCacheFraction } from './opfsUtil.js';
+import {
+    EVICTION_INDEX_FILENAME,
+    getEntriesForEviction,
+    removeFromEvictionIndex,
+    type EvictionIndexEntry,
+} from './opfsEvictionIndex.js';
 
 export interface CacheFileEntry {
     key: string;
@@ -67,12 +73,16 @@ async function readMetaFromFile(file: File): Promise<{ size: number; lastAccesse
 
 /**
  * Сканирует папку кеша и возвращает список файлов с размером и lastAccessed.
+ * Файл индекса эвикции (_eviction_index.json) не включается.
  */
 export async function listCacheFilesWithMeta(
     dir: FileSystemDirectoryHandle
 ): Promise<CacheFileEntry[]> {
     const entries: CacheFileEntry[] = [];
     for await (const [name, handle] of dir.entries()) {
+        if (name === EVICTION_INDEX_FILENAME) {
+            continue;
+        }
         if (handle.kind === 'file') {
             try {
                 const file = await (handle as FileSystemFileHandle).getFile();
@@ -92,18 +102,16 @@ export function getTotalCacheSize(entries: CacheFileEntry[]): number {
 
 /**
  * Вычисляет минимальный набор ключей для удаления по LRU (сначала самые старые по lastAccessed),
- * чтобы освободить хотя бы needToFree байт. Пропускает файлы с evictable === false (pinned).
+ * чтобы освободить хотя бы needToFree байт. Принимает записи индекса (уже только evictable).
  */
 export function computeEvictionSet(
-    entries: CacheFileEntry[],
+    entries: EvictionIndexEntry[],
     needToFree: number
 ): string[] {
     if (needToFree <= 0) {
         return [];
     }
-    // Фильтруем только эвиктабельные файлы и сортируем по lastAccessed
-    const evictableEntries = entries.filter((e) => e.evictable);
-    const sorted = [...evictableEntries].sort((a, b) => a.lastAccessed - b.lastAccessed);
+    const sorted = [...entries].sort((a, b) => a.lastAccessed - b.lastAccessed);
     const toDelete: string[] = [];
     let freed = 0;
     for (const e of sorted) {
@@ -141,8 +149,36 @@ export interface EnsureSpaceOptions {
     onEvicted?: (keys: string[]) => void;
 }
 
+export async function getTotalCacheSizeWithIndex(
+    dir: FileSystemDirectoryHandle,
+    indexEntries: EvictionIndexEntry[]
+): Promise<number> {
+    const indexMap = new Map(indexEntries.map((e) => [e.key, e.size]));
+    let total = 0;
+    for await (const [name, handle] of dir.entries()) {
+        if (name === EVICTION_INDEX_FILENAME) {
+            continue;
+        }
+        if (handle.kind !== 'file') {
+            continue;
+        }
+        const size = indexMap.get(name);
+        if (size !== undefined) {
+            total += size;
+        } else {
+            try {
+                const file = await (handle as FileSystemFileHandle).getFile();
+                total += file.size;
+            } catch {
+                // пропускаем
+            }
+        }
+    }
+    return total;
+}
+
 /**
- * Проверяет, влезет ли новый файл после эвикции. Если да — выполняет эвикцию и возвращает ok: true.
+ * Проверяет, влезет ли новый файл после эвикции. Если да — выполняет эвикцию по индексу и возвращает ok: true.
  * Если даже после удаления всего кеша не влезет — ok: false, reason для оповещения.
  */
 export async function ensureSpaceForWrite(
@@ -153,8 +189,8 @@ export async function ensureSpaceForWrite(
     const { onEvicted } = options;
     const estimate = await getStorageEstimate();
     const limit = getCacheLimit(estimate);
-    const entries = await listCacheFilesWithMeta(dir);
-    const totalSize = getTotalCacheSize(entries);
+    const entries = await getEntriesForEviction(dir);
+    const totalSize = await getTotalCacheSizeWithIndex(dir, entries);
 
     const needToFree = Math.max(
         0,
@@ -175,6 +211,7 @@ export async function ensureSpaceForWrite(
 
     const keysToDelete = computeEvictionSet(entries, needToFree);
     await evictFiles(dir, keysToDelete);
+    await removeFromEvictionIndex(dir, keysToDelete);
     onEvicted?.(keysToDelete);
     return { ok: true, evictedKeys: keysToDelete };
 }

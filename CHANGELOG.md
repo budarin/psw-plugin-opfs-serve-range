@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 - 2025-03-08
+
+- **LRU eviction index:** Added `_eviction_index.json` in the cache directory. It stores only evictable entries (`key`, `size`, `lastAccessed`) and is used for LRU eviction. When missing or corrupted, the index is rebuilt from file footers. All index operations are serialized with an in-memory lock.
+- **lastAccessed on serve:** When serving a range from OPFS, `lastAccessed` is now updated in the eviction index only (in background via `event.waitUntil`), not in the file footer. This avoids concurrent read/write on the same file and prevents `NotReadableError` when seeking (e.g. video rewind).
+- **New file in index:** After a successful write, evictable files are added to the eviction index (`addToEvictionIndex`). Eviction removes entries from the index after deleting files.
+- **ensureSpaceForWrite / QuotaExceeded path:** Eviction now uses the index (getEntriesForEviction, getTotalCacheSizeWithIndex, computeEvictionSet on index entries, removeFromEvictionIndex). `listCacheFilesWithMeta` skips the index file.
+- **Docs:** reference.mdc, opfs-cache-behavior.md and .ru updated (eviction index, index-only lastAccessed updates).
+
 ## 1.4.2 - 2025-03-05
 
 - Version bump.

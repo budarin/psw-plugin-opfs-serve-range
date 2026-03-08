@@ -11,13 +11,19 @@ import { HEADER_RANGE } from '@budarin/http-constants/headers';
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
-import { getOpfsDir, getRoot, isOpfsAvailable, shouldProcessFile } from './opfsUtil.js';
+import {
+    getOpfsDir,
+    getRoot,
+    isOpfsAvailable,
+    shouldProcessFile,
+} from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import {
     parseRangeHeader,
     build206ResponseFromStream,
     createFileRangeStream,
 } from './opfsRangeUtil.js';
+import { updateEvictionIndexLastAccessed } from './opfsEvictionIndex.js';
 
 export {
     OPFS_META_FOOTER_LENGTH,
@@ -41,8 +47,17 @@ export {
 } from './opfsUtil.js';
 export { urlToOpfsKey } from './opfsKey.js';
 
-export { isBlacklisted, addToBlacklist, getStorageEstimate, getCacheLimit } from './opfsLru.js';
-export type { StorageEstimate, CacheFileEntry, EnsureSpaceResult } from './opfsLru.js';
+export {
+    isBlacklisted,
+    addToBlacklist,
+    getStorageEstimate,
+    getCacheLimit,
+} from './opfsLru.js';
+export type {
+    StorageEstimate,
+    CacheFileEntry,
+    EnsureSpaceResult,
+} from './opfsLru.js';
 export {
     OPFS_MSG_QUOTA_EXCEEDED,
     OPFS_MSG_WRITE_SKIPPED_SIZE,
@@ -104,7 +119,6 @@ function ifRangeMatches(
     }
     return false;
 }
-
 
 /**
  * Плагин: перехватывает GET с Range и отдаёт диапазон из OPFS.
@@ -223,8 +237,14 @@ export function opfsServeRange(
                         }),
                     }
                 );
-                // Не обновляем lastAccessed при отдаче: одновременное чтение и запись в OPFS
-                // даёт NotReadableError при перемотке; LRU будет менее точным.
+                if (
+                    metadata?.evictable !== false &&
+                    event.waitUntil
+                ) {
+                    event.waitUntil(
+                        updateEvictionIndexLastAccessed(dir, key, Date.now())
+                    );
+                }
 
                 if (enableLogging) {
                     logger.debug(
