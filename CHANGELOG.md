@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.0 - 2025-03-10
+
+- **Eviction index:** When populating the cache from a directory scan, the index is now persisted not only when it was missing or corrupted, but also when the scan finds **more evictable entries** than the on-disk index contains (e.g. index was empty `[]` but the cache directory already has evictable files). This fixes the case where after a reload or when the service worker was killed before a previous index write completed, `_eviction_index.json` stayed empty and LRU eviction could not see cached files.
+- **Docs:** reference.mdc aligned with current code (skip list API names, client exports, eviction index flow, BF id format). opfs-cache-behavior: clarified when the eviction index is (re)written.
+
 ## 2.1.0 - 2025-03-08
 
 - **Terminology:** Replaced “blacklist” with “blocklist” in code and docs (opfsLru, opfsMessages, opfsWrite, opfsRangeFromNetworkAndCache, README, opfs-cache-behavior, PRD). Renamed blocklist to **skip list** (API: **isInSkipList**, **addToSkipList**) for consistency with onOPFSWriteSkipped / onOPFSSkipQuotaExceeded. (In Russian docs this is described as “cancelled list”.) Added client subscriptions **onOPFSBackgroundFetchFailed** and **onOPFSBackgroundFetchAborted** (and corresponding message types) for Background Fetch fail/abort.

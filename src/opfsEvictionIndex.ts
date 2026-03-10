@@ -162,8 +162,12 @@ async function populateCacheUnlocked(
             // пропускаем битый файл
         }
     }
-    if (indexEntries === null) {
-        await writeIndexRaw(dir, getEvictableEntriesFromCache(cache));
+    const evictableEntries = getEvictableEntriesFromCache(cache);
+    const shouldPersistIndex =
+        indexEntries === null ||
+        evictableEntries.length > (indexEntries?.length ?? 0);
+    if (shouldPersistIndex) {
+        await writeIndexRaw(dir, evictableEntries);
     }
     cachePopulatedByDir.add(name);
 }
