@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0 - 2025-03-08
+
+- **Terminology:** Replaced “blacklist” with “blocklist” in code and docs (opfsLru, opfsMessages, opfsWrite, opfsRangeFromNetworkAndCache, README, opfs-cache-behavior, PRD). Added client subscriptions **onOPFSBackgroundFetchFailed** and **onOPFSBackgroundFetchAborted** (and corresponding message types) for Background Fetch fail/abort.
+- **New:** **opfsBackgroundFetchFilter** — standalone plugin that only handles `message` and responds with include/exclude to `getBackgroundFetchFilter()`. **opfsBackgroundFetch** composes it internally (no separate registration needed for full stack); for custom SW you can register only **opfsBackgroundFetchFilter** with your own filter.
+- **New:** Idempotent Background Fetch id from asset list: **getOpfsBackgroundFetchId(assets)** (hash of sorted pathnames). **startDownloadAssetsToOpfs** uses it; if the same set is already loading, the client attaches to that registration instead of starting a duplicate.
+- **New:** **OPFS_MSG_RANGE_CACHE_FETCH_STARTED** / **OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE** — SW notifies when opfsRangeFromNetworkAndCache starts/finishes background cache fetches (“cache on first request”). Client can subscribe via **onOPFSRangeCacheFetchStarted** and **onOPFSRangeCacheFetchAllDone** to show a “background download in progress” indicator.
+- **startDownloadAssetsToOpfs:** Before starting a BF, excludes assets that are already in an active BF (pathnames from each registration’s `matchAll()`) and assets already in OPFS (one call to **listOpfsCachedResources()**). Order: first active BFs, then OPFS cache (so a just-finished download is not missed). If nothing remains to fetch, returns immediately with `written: assetsToUse`.
+- **useDownloadAssetsToOpfs:** No longer aborts the download on component unmount; only **reset()** cancels. Download continues in the background when the user leaves the page.
+- **Docs:** README/README.ru — stated that third-party (cross-origin) resources are not supported (opaque response; body cannot be read or written to OPFS). Added “Важно” paragraph about onOPFSRangeCacheFetchStarted/AllDone for the “cache on first request” scenario. Hook description updated (no cancel on unmount; cancel via reset()).
+
 ## 2.0.0 - 2025-03-08
 
 - **Breaking:** Removed **opfsPrecache** plugin and `OpfsPrecacheOptions` type. The package is focused on range requests and OPFS for large files; precaching at install was redundant for small assets (use Cache API) and unsuitable for large ones. Use **opfsServeRange** + **opfsRangeFromNetworkAndCache** for on-demand caching, or **opfsBackgroundFetch** for explicit “download for offline” flows.

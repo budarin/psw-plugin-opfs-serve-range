@@ -156,7 +156,7 @@ async function downloadForOffline(assets: string[], title: string, downloadTotal
 }
 ```
 
-If you use React, the package provides a hook that keeps download state (status, progress in bytes and per file, errors, result). When the component unmounts, the hook only stops updating state; the download continues in the background. Call reset() to cancel.
+If you use React, the package provides a hook that keeps download state (status, progress in bytes and per file, errors, result). When the component unmounts, the hook only stops updating state; the download continues in the background. Call reset() to cancel. If the user returns to the page and clicks "Download" again with the same set of files, a download with that set may already be in progress — the new call then attaches to it instead of creating a duplicate, and the promise resolves when that download completes.
 
 ```typescript
 import { useDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client/react';
@@ -258,6 +258,8 @@ For startDownloadAssetsToOpfs to work as intended, the service worker must regis
 
 - **startDownloadAssetsToOpfs(options)** — Asks the service worker for the filter, filters the URLs, starts Background Fetch. The promise resolves when the service worker has written the files to OPFS; the result includes lists of written, failed/skipped, and filtered-out URLs. You can pass progress callbacks and a cancel signal.
 
+**Before starting:** From the asset list (after include/exclude), the function first excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to listOpfsCachedResources()). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
+
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
     assets: string[];
@@ -272,7 +274,7 @@ startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
 // Reject: DownloadAssetsToOpfsRejected | Error
 ```
 
-- **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, error, result, and a reset function. Calling reset() cancels the current download (if one is in progress) and clears state. Requires React as a peer dependency.
+- **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, error, result, and a reset function. The download is not cancelled on unmount; cancel only via reset(). If the user clicks "Download" again with the same set of files, the call attaches to the existing download (no duplicate). Requires React as a peer dependency.
 
 ```ts
 useDownloadAssetsToOpfs(): {
