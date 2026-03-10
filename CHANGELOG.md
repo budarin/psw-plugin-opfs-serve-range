@@ -2,13 +2,13 @@
 
 ## 2.1.0 - 2025-03-08
 
-- **Terminology:** Replaced “blacklist” with “blocklist” in code and docs (opfsLru, opfsMessages, opfsWrite, opfsRangeFromNetworkAndCache, README, opfs-cache-behavior, PRD). Added client subscriptions **onOPFSBackgroundFetchFailed** and **onOPFSBackgroundFetchAborted** (and corresponding message types) for Background Fetch fail/abort.
+- **Terminology:** Replaced “blacklist” with “blocklist” in code and docs (opfsLru, opfsMessages, opfsWrite, opfsRangeFromNetworkAndCache, README, opfs-cache-behavior, PRD). Renamed blocklist to **skip list** (API: **isInSkipList**, **addToSkipList**) for consistency with onOPFSWriteSkipped / onOPFSSkipQuotaExceeded. (In Russian docs this is described as “cancelled list”.) Added client subscriptions **onOPFSBackgroundFetchFailed** and **onOPFSBackgroundFetchAborted** (and corresponding message types) for Background Fetch fail/abort.
 - **New:** **opfsBackgroundFetchFilter** — standalone plugin that only handles `message` and responds with include/exclude to `getBackgroundFetchFilter()`. **opfsBackgroundFetch** composes it internally (no separate registration needed for full stack); for custom SW you can register only **opfsBackgroundFetchFilter** with your own filter.
 - **New:** Idempotent Background Fetch id from asset list: **getOpfsBackgroundFetchId(assets)** (hash of sorted pathnames). **startDownloadAssetsToOpfs** uses it; if the same set is already loading, the client attaches to that registration instead of starting a duplicate.
 - **New:** **OPFS_MSG_RANGE_CACHE_FETCH_STARTED** / **OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE** — SW notifies when opfsRangeFromNetworkAndCache starts/finishes background cache fetches (“cache on first request”). Client can subscribe via **onOPFSRangeCacheFetchStarted** and **onOPFSRangeCacheFetchAllDone** to show a “background download in progress” indicator.
 - **startDownloadAssetsToOpfs:** Before starting a BF, excludes assets that are already in an active BF (pathnames from each registration’s `matchAll()`) and assets already in OPFS (one call to **listOpfsCachedResources()**). Order: first active BFs, then OPFS cache (so a just-finished download is not missed). If nothing remains to fetch, returns immediately with `written: assetsToUse`.
 - **useDownloadAssetsToOpfs:** No longer aborts the download on component unmount; only **reset()** cancels. Download continues in the background when the user leaves the page.
-- **Docs:** README/README.ru — stated that third-party (cross-origin) resources are not supported (opaque response; body cannot be read or written to OPFS). Added “Важно” paragraph about onOPFSRangeCacheFetchStarted/AllDone for the “cache on first request” scenario. Hook description updated (no cancel on unmount; cancel via reset()).
+- **Docs:** README/README.ru — stated that third-party (cross-origin) resources are not supported (opaque response; body cannot be read or written to OPFS). Added a note about onOPFSRangeCacheFetchStarted/AllDone for the “cache on first request” scenario. Hook description updated (no cancel on unmount; cancel via reset()). Clarified that storage quota is shared within the origin (maxCacheFraction); leave free space for Cache API, IndexedDB, etc. Documented **writeToOpfs** fifth argument `options` (`url`, `knownSize`) for cache limits; size when Content-Length omitted: by counting bytes in body. Cache utilities section; EN and RU README aligned.
 
 ## 2.0.0 - 2025-03-08
 
@@ -70,11 +70,11 @@
 
 ## 1.1.11 - 2025-02-18
 
-- Documentation: for `listOpfsCachedResources`, one ts block (interface `OpfsCachedResource`, then signature); removed the label and second block "Each array element" / "Элемент массива". Removed subsection "Message payload" / "Данные в сообщениях" in README/README.ru (duplicated description under each subscription).
+- Documentation: for `listOpfsCachedResources`, one ts block (interface `OpfsCachedResource`, then signature); removed the label and second block "Each array element". Removed subsection "Message payload" in README/README.ru (duplicated description under each subscription).
 
 ## 1.1.10 - 2025-02-18
 
-- Documentation: subsection "Cache management and types" / "Управление кешем и типы" renamed to "Cache management utilities" / "Утилиты управления кэшем", added intro sentence (where called, purpose). Rules in `.cursor/rules/main.mdc`: tightened §1 — explicitly stated that stating the correct solution is not consent; added checklist before editing (three questions) and rule "when in doubt, do not edit".
+- Documentation: subsection "Cache management and types" renamed to "Cache management utilities", added intro sentence (where called, purpose). Rules in `.cursor/rules/main.mdc`: tightened §1 — explicitly stated that stating the correct solution is not consent; added checklist before editing (three questions) and rule "when in doubt, do not edit".
 
 ## 1.1.9 - 2025-02-18
 
@@ -86,7 +86,7 @@
 
 ## 1.1.7 - 2025-02-18
 
-- Documentation: restructured README/README.ru — client utilities and subscriptions formatted as specifications (heading + purpose in one line, full TypeScript signature, `event.data` types in multi-line blocks with comments for non-obvious fields); plugins section renamed to "Plugin specifications" / "Спецификации плагинов", plugin descriptions aligned with wording from intro list at start of file; plugin options — only in signature block with inline comments for non-obvious parameters; added API formatting rules in `.cursor/rules/docs.mdc`.
+- Documentation: restructured README/README.ru — client utilities and subscriptions formatted as specifications (heading + purpose in one line, full TypeScript signature, `event.data` types in multi-line blocks with comments for non-obvious fields); plugins section renamed to "Plugin specifications", plugin descriptions aligned with wording from intro list at start of file; plugin options — only in signature block with inline comments for non-obvious parameters; added API formatting rules in `.cursor/rules/docs.mdc`.
 
 ## 1.1.6 - 2026-02-17
 
@@ -120,26 +120,21 @@
 
 ## 1.0.6 - 2026-02-17
 
-- Документация: все ссылки на файлы `docs/opfs-cache-behavior*.md` в README переведены на абсолютные GitHub-URL, чтобы корректно открываться на npmjs.com.
+- Documentation: all links to `docs/opfs-cache-behavior*.md` in README changed to absolute GitHub URLs so they open correctly on npmjs.com.
 
 ## 1.0.3 - 2026-02-17
 
-- Документация: выделен явный раздел про клиентские утилиты (`Client utilities` / «Клиентские утилиты») в README, добавлены перекрёстные ссылки из `docs/opfs-cache-behavior*.md` и обновлена справка по клиентскому entry point в `.cursor/rules/reference.mdc`.
+- Documentation: added explicit "Client utilities" section in README, cross-links from `docs/opfs-cache-behavior*.md`, and updated client entry point reference in `.cursor/rules/reference.mdc`.
 
 ## 1.0.2 - 2026-02-17
 
-- Документация: добавлены английские версии README и описания поведения кеша OPFS (`docs/opfs-cache-behavior.md`), доработан русский README и `docs/opfs-cache-behavior.ru.md` (тон, терминология, структура).
-- README: добавлены и выровнены бейджи (CI, npm, bundlephobia, license), ссылки на русскую/английскую документацию.
+- Documentation: added English README and OPFS cache behavior docs (`docs/opfs-cache-behavior.md`); updated Russian README and `docs/opfs-cache-behavior.ru.md` (tone, terminology, structure).
+- README: added and aligned badges (CI, npm, bundlephobia, license), links to Russian and English documentation.
 
 ## 1.0.1 - 2026-02-17
 
-- Первая публичная версия `@budarin/psw-plugin-opfs-serve-range`.
-- Плагины для обработки HTTP Range-запросов из OPFS: `opfsServeRange`, `opfsPrecache`,
-  `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`.
-- Единый формат хранения в OPFS: один файл на URL (`hex(SHA-256(URL))`), метаданные с `url`, `size`,
-  `type`, `etag`, `lastAccessed` во футере.
-- Клиентский entry-point `@budarin/psw-plugin-opfs-serve-range/client`:
-  события о квоте/эвикции и утилиты `listOpfsCachedResources`, `hasInOpfsCache`,
-  `deleteFromOpfsCache` для управления кешем из UI.
-- Базовые юнит-тесты под Node (Vitest) для `urlToOpfsKey` и LRU-логики (`getCacheLimit`,
-  `computeEvictionSet`); добавлен скрипт `pnpm test` и прогон тестов в CI.
+- First public release of `@budarin/psw-plugin-opfs-serve-range`.
+- Plugins for HTTP Range requests from OPFS: `opfsServeRange`, `opfsPrecache`, `opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`.
+- Single OPFS storage format: one file per URL (`hex(SHA-256(URL))`), metadata with `url`, `size`, `type`, `etag`, `lastAccessed` in file footer.
+- Client entry point `@budarin/psw-plugin-opfs-serve-range/client`: quota/eviction events and utilities `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` for cache management from UI.
+- Basic Node (Vitest) unit tests for `urlToOpfsKey` and LRU logic (`getCacheLimit`, `computeEvictionSet`); added `pnpm test` script and test run in CI.

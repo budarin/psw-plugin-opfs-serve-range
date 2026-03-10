@@ -116,7 +116,7 @@ export function onOPFSWriteFailed(
     return onServiceWorkerMessage(OPFS_MSG_WRITE_FAILED, handler as (e: MessageEvent) => void);
 }
 
-/** Подписка на сообщение «повторный запрос к URL из blocklist (не кешируем)». */
+/** Подписка на сообщение «повторный запрос к URL из skip list (не кешируем)». */
 export function onOPFSSkipQuotaExceeded(
     handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void
 ): () => void {

@@ -9,7 +9,7 @@ import { getOpfsDir, getRoot } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
-import { isBlocklisted } from './opfsLru.js';
+import { isInSkipList } from './opfsLru.js';
 import {
     OPFS_BACKGROUND_FETCH_ID_PREFIX,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
@@ -148,12 +148,12 @@ export function opfsBackgroundFetch(
                     }
                     continue;
                 }
-                if (isBlocklisted(url)) {
+                if (isInSkipList(url)) {
                     failedOrSkippedPathnames.push(pathname);
                     notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: skip ${url} (blocklisted, quota exceeded)`
+                            `opfsBackgroundFetch: skip ${url} (in skip list, quota exceeded)`
                         );
                     }
                     continue;

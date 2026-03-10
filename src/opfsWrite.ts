@@ -16,7 +16,7 @@ import {
     evictFiles,
     getCacheLimit,
     getStorageEstimate,
-    addToBlocklist,
+    addToSkipList,
 } from './opfsLru.js';
 import {
     addToEvictionIndex,
@@ -32,7 +32,7 @@ import {
 } from './opfsMessages.js';
 
 export interface WriteToOpfsOptions {
-    /** URL ресурса — для оповещений и blocklist при потоке без размера. */
+    /** URL ресурса — для оповещений и skip list при потоке без размера. */
     url?: string;
     /** Известный размер тела (Content-Length). Если задан, перед записью проверяется лимит и при необходимости выполняется LRU-эвикция. */
     knownSize?: number;
@@ -42,7 +42,7 @@ export interface WriteToOpfsOptions {
  * Записывает в OPFS файл по ключу: тело (потоком), затем футер с метаданными.
  * Метаданные должны содержать size (размер тела в байтах); при записи футера используется он.
  * При knownSize перед записью выполняется проверка лимита и при необходимости эвикция по LRU.
- * При ошибке QuotaExceeded частичный файл удаляется; при bytesWritten >= totalCacheSize URL добавляется в blocklist.
+ * При ошибке QuotaExceeded частичный файл удаляется; при bytesWritten >= totalCacheSize URL добавляется в skip list.
  *
  * @param dir — папка плагина в OPFS (getOpfsDir(root, true))
  * @param key — ключ файла (например, из urlToOpfsKey(url))
@@ -132,7 +132,7 @@ export async function writeToOpfs(
             const { entries, totalSize: totalCacheSize } = await getEntriesForEviction(dir);
             const bytesWritten = bodySize;
             if (bytesWritten >= totalCacheSize) {
-                addToBlocklist(url);
+                addToSkipList(url);
                 notifyClients(OPFS_MSG_QUOTA_EXCEEDED, { url });
             } else {
                 const estimate = await getStorageEstimate();

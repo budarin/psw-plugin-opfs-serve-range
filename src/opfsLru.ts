@@ -1,5 +1,5 @@
 /**
- * LRU и лимиты кеша OPFS: список файлов, расчёт эвикции, blocklist (URL не кешируем повторно).
+ * LRU и лимиты кеша OPFS: список файлов, расчёт эвикции, skip list (URL не кешируем повторно).
  * Для эвикции используется индекс _eviction_index.json (только evictable); при отсутствии/повреждении пересобирается.
  */
 
@@ -27,14 +27,14 @@ export interface StorageEstimate {
     usage: number;
 }
 
-const blocklist = new Set<string>();
+const skipList = new Set<string>();
 
-export function isBlocklisted(url: string): boolean {
-    return blocklist.has(url);
+export function isInSkipList(url: string): boolean {
+    return skipList.has(url);
 }
 
-export function addToBlocklist(url: string): void {
-    blocklist.add(url);
+export function addToSkipList(url: string): void {
+    skipList.add(url);
 }
 
 /**

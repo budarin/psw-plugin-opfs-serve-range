@@ -48,8 +48,8 @@ export {
 export { urlToOpfsKey } from './opfsKey.js';
 
 export {
-    isBlocklisted,
-    addToBlocklist,
+    isInSkipList,
+    addToSkipList,
     getStorageEstimate,
     getCacheLimit,
 } from './opfsLru.js';

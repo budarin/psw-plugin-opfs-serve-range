@@ -8,7 +8,7 @@ export const OPFS_MSG_WRITE_SKIPPED_SIZE = 'OPFS_MSG_WRITE_SKIPPED_SIZE';
 export const OPFS_MSG_CACHE_LIMIT_REACHED = 'OPFS_MSG_CACHE_LIMIT_REACHED';
 export const OPFS_MSG_EVICTION_COMPLETED = 'OPFS_MSG_EVICTION_COMPLETED';
 export const OPFS_MSG_WRITE_FAILED = 'OPFS_MSG_WRITE_FAILED';
-/** Повторный запрос к URL из blocklist (не кешируем, квота была превышена ранее). */
+/** Повторный запрос к URL из skip list (не кешируем, квота была превышена ранее). */
 export const OPFS_MSG_SKIP_QUOTA_EXCEEDED = 'OPFS_MSG_SKIP_QUOTA_EXCEEDED';
 /** Background Fetch завершился с ошибкой. */
 export const OPFS_MSG_BACKGROUND_FETCH_FAILED = 'OPFS_MSG_BACKGROUND_FETCH_FAILED';
