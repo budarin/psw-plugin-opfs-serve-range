@@ -49,10 +49,10 @@
     },
     "devDependencies": {
         "@budarin/pluggable-serviceworker": "^1.17.3",
-        "@types/react": "^18.3.12",
+        "@types/react": "^19.2.14",
         "@types/serviceworker": "^0.0.193",
-        "@types/web": "^0.0.340",
-        "react": "^18.3.1",
+        "@types/web": "^0.0.342",
+        "react": "^19.2.4",
         "typescript": "^5.9.3",
         "vitest": "^4.0.18"
     },
