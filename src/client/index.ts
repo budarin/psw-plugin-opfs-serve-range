@@ -365,7 +365,7 @@ export function startDownloadAssetsToOpfs(
                 ...(filteredOut.length > 0 && { filteredOut }),
             };
         }
-        const id = await getOpfsBackgroundFetchId(assetsToUse);
+
         const runOptions: {
             title?: string;
             downloadTotal?: number;
@@ -382,13 +382,47 @@ export function startDownloadAssetsToOpfs(
         const reg = (await navigator.serviceWorker.ready) as ServiceWorkerRegistration;
         const activeIds = await getBackgroundFetchIds(reg);
         const ourActiveIds = activeIds.filter((i) => i.startsWith(OPFS_BACKGROUND_FETCH_ID_PREFIX));
+
+        const pathnamesInProgress = new Set<string>();
+        for (const activeId of ourActiveIds) {
+            try {
+                const bfReg = await getBackgroundFetchRegistration(reg, activeId);
+                if (bfReg && typeof bfReg.matchAll === 'function') {
+                    const records = await bfReg.matchAll();
+                    for (const record of records) {
+                        if (record?.request?.url) {
+                            pathnamesInProgress.add(new URL(record.request.url).pathname);
+                        }
+                    }
+                }
+            } catch {
+                // ignore: registration may be finished or unavailable
+            }
+        }
+        const assetsAfterProgress = assetsToUse.filter((p) => !pathnamesInProgress.has(p));
+
+        const cached = await listOpfsCachedResources();
+        const cachedPathnames = new Set(cached.map((r) => new URL(r.url).pathname));
+        const assetsToFetch = assetsAfterProgress.filter((p) => !cachedPathnames.has(p));
+
+        if (assetsToFetch.length === 0) {
+            return {
+                registrationId: '',
+                assets: assetsToUse,
+                written: assetsToUse,
+                failedOrSkipped: [],
+                ...(filteredOut.length > 0 && { filteredOut }),
+            };
+        }
+
+        const id = await getOpfsBackgroundFetchId(assetsToFetch);
         if (ourActiveIds.includes(id)) {
             const bfReg = await getBackgroundFetchRegistration(reg, id);
             if (bfReg) {
-                return runBackgroundFetch(id, assetsToUse, filteredOut, runOptions, { attachOnly: true });
+                return runBackgroundFetch(id, assetsToFetch, filteredOut, runOptions, { attachOnly: true });
             }
         }
-        return runBackgroundFetch(id, assetsToUse, filteredOut, runOptions);
+        return runBackgroundFetch(id, assetsToFetch, filteredOut, runOptions);
     });
 }
 

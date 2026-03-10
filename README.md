@@ -10,6 +10,8 @@
 
 Service Worker plugins and utilities for [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker). Large files are stored in the Origin Private File System (OPFS), and byte-range (HTTP Range) requests are served directly from those files: you can read any part of a file without reading from the start, unlike with the Cache API. You configure quota limits, eviction (LRU), and pinned resources. The package supports "download in the background and use offline" via the Background Fetch API.
 
+**Third-party resources are not supported:** loading and caching are same-origin only. For cross-origin requests the browser returns an [opaque response](https://fetch.spec.whatwg.org/#concept-filtered-response-opaque); the response body cannot be read or written to OPFS, so the plugins do not download such resources.
+
 Detailed cache behavior (limits, LRU, eviction, notifications): [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
 ---

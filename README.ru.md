@@ -2,6 +2,8 @@
 
 Плагины и утилиты для [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker). Большие файлы хранятся в Origin Private File System (OPFS), а запросы по диапазону байтов (HTTP Range) обслуживаются напрямую из файлов: можно читать любую часть файла без последовательного прохода, в отличие от Cache API. Лимиты по квоте, вытеснение по LRU и список закреплённых ресурсов настраиваются вами. Поддерживается сценарий «скачать в фоне и смотреть офлайн» через Background Fetch.
 
+**Сторонние ресурсы не поддерживаются:** загрузка и кеширование только same-origin. При запросе к другому origin браузер возвращает [opaque response](https://fetch.spec.whatwg.org/#concept-filtered-response-opaque): тело ответа недоступно для чтения и записи в OPFS, поэтому плагины не качают такие ресурсы.
+
 Подробнее о поведении кеша (лимиты, LRU, эвикция, оповещения): [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
 ---
