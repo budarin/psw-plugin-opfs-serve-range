@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.0 - 2026-03-10
+
+- **opfsServeRange — in-memory range cache:** New option **rangeCache** (`true` or `{ maxSizeBytes?, maxEntries? }`). When set, 206 responses are cached in memory by (opfsKey, start, end); repeated requests for the same range are served from cache without reading OPFS. Limits default to **configureOpfs** values **rangeCacheMaxSizeBytes** (default 5 MB) and **rangeCacheMaxEntries** (default 300); plugin options override. LRU eviction when limits are exceeded. Cache is invalidated when a file is evicted from OPFS and on **clearOpfsCache()**. Useful for maps and documents with many parallel or repeated range requests.
+- **configureOpfs:** New options **rangeCacheMaxSizeBytes** and **rangeCacheMaxEntries** — defaults for the in-memory range cache when **opfsServeRange** is used with **rangeCache: true** or **rangeCache: {}**.
+- **rangeResponseCacheControl:** Default changed from `max-age=31536000, immutable` to **empty string** — 206 responses are no longer cached in the browser HTTP cache by default (avoids caching millions of range responses for video).
+- **Exports:** **getRangeCacheMaxSizeBytes**, **getRangeCacheMaxEntries**, **getOrCreateRangeCache**, **getRangeCache**, **RangeCacheLimits**, **RangeCacheEntryMeta** from the main entry.
+- **Docs:** README and README.ru — rangeResponseCacheControl default, rangeCache and configureOpfs range cache options; reference.mdc and opfs-cache-behavior (EN/RU) updated.
+
 ## 2.2.0 - 2025-03-10
 
 - **Eviction index:** When populating the cache from a directory scan, the index is now persisted not only when it was missing or corrupted, but also when the scan finds **more evictable entries** than the on-disk index contains (e.g. index was empty `[]` but the cache directory already has evictable files). This fixes the case where after a reload or when the service worker was killed before a previous index write completed, `_eviction_index.json` stayed empty and LRU eviction could not see cached files.

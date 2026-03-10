@@ -5,6 +5,7 @@
  */
 
 import { readMetadataFromFileFooter } from './opfsFormat.js';
+import { getRangeCache } from './opfsRangeCache.js';
 
 export const EVICTION_INDEX_FILENAME = '_eviction_index.json';
 
@@ -273,6 +274,7 @@ export async function addToEvictionIndex(
 
 /**
  * Удаляет ключи из in-memory кеша и из индекса на диске после эвикции.
+ * Инвалидирует записи range-кеша для удалённых opfs-ключей.
  */
 export async function removeFromEvictionIndex(
     dir: FileSystemDirectoryHandle,
@@ -282,6 +284,12 @@ export async function removeFromEvictionIndex(
         return;
     }
     const set = new Set(keys);
+    const rangeCache = getRangeCache();
+    if (rangeCache !== null) {
+        for (const key of set) {
+            rangeCache.invalidateForKey(key);
+        }
+    }
     return runWithLock(async () => {
         await populateCacheUnlocked(dir);
         const cache = getCache(dir);

@@ -182,7 +182,7 @@ If you need custom logic (your own download id, filtering, or callbacks), you ca
 
 ## Reference: Service worker plugins
 
-Global cache settings are set via configureOpfs: the OPFS folder name and the fraction of storage quota. Call configureOpfs before registering plugins. By default the folder name is `range-requests-cache` and the quota fraction is 0.5. To clear the entire cache, use clearOpfsCache().
+Global cache settings are set via configureOpfs: the OPFS folder name, the fraction of storage quota, and optionally the in-memory range cache limits (rangeCacheMaxSizeBytes, rangeCacheMaxEntries) used by opfsServeRange when rangeCache is enabled. Call configureOpfs before registering plugins. By default the folder name is `range-requests-cache`, the quota fraction is 0.5, and range cache defaults are 5 MB and 300 entries. To clear the entire cache, use clearOpfsCache().
 
 Storage quota is shared across the origin: OPFS, Cache API, IndexedDB, and other storage share it. When choosing the fraction (maxCacheFraction), keep in mind that the rest may be needed for the service worker cache, app databases, and other features — do not set 1.0 if the app uses more than this cache.
 
@@ -203,7 +203,8 @@ opfsServeRange(options?: {
   enableLogging?: boolean;
   include?: string[];
   exclude?: string[];
-  rangeResponseCacheControl?: string; // default: max-age=31536000, immutable
+  rangeResponseCacheControl?: string; // default: '' (no browser HTTP cache for ranges)
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory cache for 206 responses; limits from configureOpfs when omitted
 }): Plugin | undefined
 ```
 

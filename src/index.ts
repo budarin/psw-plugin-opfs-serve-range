@@ -13,13 +13,17 @@ import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-type
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     getOpfsDir,
+    getRangeCacheMaxEntries,
+    getRangeCacheMaxSizeBytes,
     getRoot,
     isOpfsAvailable,
     shouldProcessFile,
 } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
+import { getOrCreateRangeCache } from './opfsRangeCache.js';
 import {
     parseRangeHeader,
+    build206Response,
     build206ResponseFromStream,
     createFileRangeStream,
 } from './opfsRangeUtil.js';
@@ -42,9 +46,17 @@ export {
     configureOpfs,
     isOpfsAvailable,
     getMaxCacheFraction,
+    getRangeCacheMaxSizeBytes,
+    getRangeCacheMaxEntries,
     isEvictable,
     type OpfsConfigOptions,
 } from './opfsUtil.js';
+export {
+    getOrCreateRangeCache,
+    getRangeCache,
+    type RangeCacheLimits,
+    type RangeCacheEntryMeta,
+} from './opfsRangeCache.js';
 export { urlToOpfsKey } from './opfsKey.js';
 
 export {
@@ -98,9 +110,14 @@ export interface OpfsServeRangeOptions {
      */
     exclude?: string[];
     /**
-     * Cache-Control для ответов 206 (по умолчанию `max-age=31536000, immutable`).
+     * Cache-Control для ответов 206 (по умолчанию пустая строка — не кэшировать диапазоны в HTTP-кеше браузера).
      */
     rangeResponseCacheControl?: string;
+    /**
+     * In-memory кеш 206-ответов: true или {} — лимиты из configureOpfs; объект — переопределение maxSizeBytes/maxEntries.
+     * При отсутствии или false кеш не используется.
+     */
+    rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
 }
 
 function ifRangeMatches(
@@ -144,8 +161,31 @@ export function opfsServeRange(
         enableLogging = false,
         include,
         exclude,
-        rangeResponseCacheControl = 'max-age=31536000, immutable',
+        rangeResponseCacheControl = '',
+        rangeCache,
     } = options;
+
+    const useRangeCache =
+        rangeCache === true ||
+        (typeof rangeCache === 'object' && rangeCache !== null);
+    const rangeCacheLimits: { maxSizeBytes: number; maxEntries: number } | null =
+        useRangeCache
+            ? {
+                  maxSizeBytes:
+                      typeof rangeCache === 'object' &&
+                      rangeCache?.maxSizeBytes !== undefined
+                          ? rangeCache.maxSizeBytes
+                          : getRangeCacheMaxSizeBytes(),
+                  maxEntries:
+                      typeof rangeCache === 'object' &&
+                      rangeCache?.maxEntries !== undefined
+                          ? rangeCache.maxEntries
+                          : getRangeCacheMaxEntries(),
+              }
+            : null;
+    if (useRangeCache && rangeCacheLimits !== null) {
+        getOrCreateRangeCache(rangeCacheLimits);
+    }
 
     return {
         name: 'opfs-serve-range',
@@ -229,6 +269,92 @@ export function opfsServeRange(
 
             try {
                 const range = parseRangeHeader(rangeHeader, size);
+
+                if (useRangeCache && rangeCacheLimits !== null) {
+                    const cache = getOrCreateRangeCache(rangeCacheLimits);
+                    const cached = cache.get(key, range.start, range.end);
+                    if (cached !== undefined) {
+                        const response = build206Response(
+                            cached.blob,
+                            range,
+                            cached.meta.fullSize,
+                            {
+                                type:
+                                    cached.meta.type ??
+                                    MIME_APPLICATION_OCTET_STREAM,
+                                ...(cached.meta.etag && {
+                                    etag: cached.meta.etag,
+                                }),
+                                ...(cached.meta.lastModified && {
+                                    lastModified: cached.meta.lastModified,
+                                }),
+                                ...(rangeResponseCacheControl && {
+                                    cacheControl: rangeResponseCacheControl,
+                                }),
+                            }
+                        );
+                        if (
+                            metadata?.evictable !== false &&
+                            event.waitUntil
+                        ) {
+                            event.waitUntil(
+                                updateEvictionIndexLastAccessed(
+                                    dir,
+                                    key,
+                                    Date.now()
+                                )
+                            );
+                        }
+                        if (enableLogging) {
+                            logger.debug(
+                                `opfsServeRange: 206 from rangeCache for ${url} bytes ${range.start}-${range.end}`
+                            );
+                        }
+                        return response;
+                    }
+                    const blob = file.slice(range.start, range.end + 1);
+                    cache.set(key, range.start, range.end, blob, {
+                        fullSize: size,
+                        type,
+                        ...(metadata?.etag && { etag: metadata.etag }),
+                        ...(metadata?.lastModified && {
+                            lastModified: metadata.lastModified,
+                        }),
+                    });
+                    const response = build206Response(
+                        blob,
+                        range,
+                        size,
+                        {
+                            type,
+                            ...(metadata?.etag && { etag: metadata.etag }),
+                            ...(metadata?.lastModified && {
+                                lastModified: metadata.lastModified,
+                            }),
+                            ...(rangeResponseCacheControl && {
+                                cacheControl: rangeResponseCacheControl,
+                            }),
+                        }
+                    );
+                    if (
+                        metadata?.evictable !== false &&
+                        event.waitUntil
+                    ) {
+                        event.waitUntil(
+                            updateEvictionIndexLastAccessed(
+                                dir,
+                                key,
+                                Date.now()
+                            )
+                        );
+                    }
+                    if (enableLogging) {
+                        logger.debug(
+                            `opfsServeRange: 206 for ${url} bytes ${range.start}-${range.end} (cached)`
+                        );
+                    }
+                    return response;
+                }
 
                 const rangeStream = createFileRangeStream(file, range);
                 const response = build206ResponseFromStream(

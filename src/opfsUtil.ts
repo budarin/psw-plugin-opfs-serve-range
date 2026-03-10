@@ -4,14 +4,21 @@
 
 import { OPFS_FOLDER_NAME } from './opfsFormat.js';
 import { invalidateCacheForDir } from './opfsEvictionIndex.js';
+import { getRangeCache } from './opfsRangeCache.js';
 
 const DEFAULT_MAX_CACHE_FRACTION = 0.5;
+const DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+const DEFAULT_RANGE_CACHE_MAX_ENTRIES = 300;
 
 export interface OpfsConfigOptions {
     /** Имя папки в OPFS для файлов кеша. */
     folderName?: string;
     /** Доля квоты origin (0…1), которую может занимать кеш. По умолчанию 0.5. */
     maxCacheFraction?: number;
+    /** Макс. суммарный размер in-memory кеша range-ответов (байты). Используется плагином opfsServeRange при rangeCache: true/{}. */
+    rangeCacheMaxSizeBytes?: number;
+    /** Макс. количество записей в in-memory кеше range-ответов. Используется плагином opfsServeRange при rangeCache: true/{}. */
+    rangeCacheMaxEntries?: number;
 }
 
 let opfsConfig: OpfsConfigOptions = {};
@@ -58,6 +65,24 @@ export function getMaxCacheFraction(): number {
     const v = opfsConfig.maxCacheFraction;
     if (v === undefined || v < 0 || v > 1) {
         return DEFAULT_MAX_CACHE_FRACTION;
+    }
+    return v;
+}
+
+/** Лимит размера in-memory кеша range-ответов (для opfsServeRange rangeCache). */
+export function getRangeCacheMaxSizeBytes(): number {
+    const v = opfsConfig.rangeCacheMaxSizeBytes;
+    if (v === undefined || v < 0) {
+        return DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES;
+    }
+    return v;
+}
+
+/** Лимит количества записей in-memory кеша range-ответов (для opfsServeRange rangeCache). */
+export function getRangeCacheMaxEntries(): number {
+    const v = opfsConfig.rangeCacheMaxEntries;
+    if (v === undefined || v < 0) {
+        return DEFAULT_RANGE_CACHE_MAX_ENTRIES;
     }
     return v;
 }
@@ -142,6 +167,7 @@ export async function clearOpfsCache(): Promise<void> {
     const root = await getRoot();
     const name = getResolvedFolderName();
     invalidateCacheForDir(name);
+    getRangeCache()?.invalidateAll();
     try {
         await root.removeEntry(name, { recursive: true });
     } catch {

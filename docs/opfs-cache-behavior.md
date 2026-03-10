@@ -21,6 +21,8 @@ In **`configureOpfs()`** you specify:
 
 - **`folderName`** – directory name in OPFS where all cache files live (default `'range-requests-cache'`).
 - **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
+- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
+- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
 
 The effective cache limit in bytes is calculated as:
 
@@ -135,6 +137,8 @@ In **`configureOpfs()`** you specify:
 
 - **`folderName`** – directory name in OPFS where all cache files live (default `'range-requests-cache'`).
 - **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
+- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
+- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
 
 The effective cache limit in bytes is calculated as:
 
@@ -249,6 +253,8 @@ In **`configureOpfs()`** you specify:
 
 - **`folderName`** – directory name in OPFS where all cache files live (defaults to `'range-requests-cache'`).
 - **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Defaults to `0.5` (50%).
+- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
+- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
 
 The effective cache limit in bytes is calculated as:
 

@@ -179,7 +179,7 @@ function DownloadButton() {
 
 ## Справочник: плагины (сервис-воркер)
 
-Общие настройки кеша задаются через configureOpfs: имя папки в OPFS и доля квоты хранилища. Вызвать configureOpfs нужно до регистрации плагинов. По умолчанию имя папки — `range-requests-cache`, доля квоты — 0.5. Полностью очистить кеш можно функцией clearOpfsCache().
+Общие настройки кеша задаются через configureOpfs: имя папки в OPFS, доля квоты хранилища и при необходимости лимиты in-memory кеша диапазонов (rangeCacheMaxSizeBytes, rangeCacheMaxEntries) для opfsServeRange при включённом rangeCache. Вызвать configureOpfs нужно до регистрации плагинов. По умолчанию имя папки — `range-requests-cache`, доля квоты — 0.5, лимиты кеша диапазонов — 5 МБ и 300 записей. Полностью очистить кеш можно функцией clearOpfsCache().
 
 Квота хранилища общая для origin: её делят OPFS, Cache API, IndexedDB и другие хранилища. При выборе доли (maxCacheFraction) учитывайте, что остальное место может понадобиться для кеша сервис-воркера, баз данных приложения и прочего — не задавайте 1.0, если приложение использует не только этот кеш.
 
@@ -200,7 +200,8 @@ opfsServeRange(options?: {
   enableLogging?: boolean;
   include?: string[];
   exclude?: string[];
-  rangeResponseCacheControl?: string; // по умолчанию max-age=31536000, immutable
+  rangeResponseCacheControl?: string; // по умолчанию '' (не кэшировать диапазоны в HTTP-кеше браузера)
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory кеш 206-ответов; лимиты из configureOpfs, если не заданы
 }): Plugin | undefined
 ```
 
