@@ -184,6 +184,8 @@ If you need custom logic (your own download id, filtering, or callbacks), you ca
 
 Global cache settings are set via configureOpfs: the OPFS folder name and the fraction of storage quota. Call configureOpfs before registering plugins. By default the folder name is `range-requests-cache` and the quota fraction is 0.5. To clear the entire cache, use clearOpfsCache().
 
+Storage quota is shared across the origin: OPFS, Cache API, IndexedDB, and other storage share it. When choosing the fraction (maxCacheFraction), keep in mind that the rest may be needed for the service worker cache, app databases, and other features — do not set 1.0 if the app uses more than this cache.
+
 In environments where OPFS is not available, plugin factories return undefined.
 
 | Plugin | Purpose |
