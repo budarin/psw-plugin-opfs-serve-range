@@ -14,6 +14,23 @@ export const OPFS_MSG_SKIP_QUOTA_EXCEEDED = 'OPFS_MSG_SKIP_QUOTA_EXCEEDED';
 export const OPFS_MSG_BACKGROUND_FETCH_FAILED = 'OPFS_MSG_BACKGROUND_FETCH_FAILED';
 /** Background Fetch был отменён. */
 export const OPFS_MSG_BACKGROUND_FETCH_ABORTED = 'OPFS_MSG_BACKGROUND_FETCH_ABORTED';
+/** Background Fetch успешно завершён, ресурсы записаны в OPFS. */
+export const OPFS_MSG_BACKGROUND_FETCH_COMPLETED = 'OPFS_MSG_BACKGROUND_FETCH_COMPLETED';
+/** Один файл из Background Fetch записан в OPFS (прогресс по файлам). */
+export const OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN = 'OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN';
+
+/** Плагин opfsRangeFromNetworkAndCache начал фоновую загрузку ресурса в кеш (сценарий «кеш при первом запросе»). В payload — url. */
+export const OPFS_MSG_RANGE_CACHE_FETCH_STARTED = 'OPFS_MSG_RANGE_CACHE_FETCH_STARTED';
+/** Все фоновые загрузки в кеш (opfsRangeFromNetworkAndCache) завершены — активных больше нет. */
+export const OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE = 'OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE';
+
+/** Запрос клиента к SW: вернуть include/exclude плагина opfsBackgroundFetch (requestId в data, ответ — OPFS_RESPONSE_BACKGROUND_FETCH_FILTER). */
+export const OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER = 'OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER';
+/** Ответ SW на OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER (requestId, include?, exclude?). */
+export const OPFS_RESPONSE_BACKGROUND_FETCH_FILTER = 'OPFS_RESPONSE_BACKGROUND_FETCH_FILTER';
+
+/** Префикс идентификатора загрузки Background Fetch: плагин opfsBackgroundFetch обрабатывает только события с id, начинающимся с этой строки. */
+export const OPFS_BACKGROUND_FETCH_ID_PREFIX = 'opfs-ranges-';
 
 export type OpfsMessageType =
     | typeof OPFS_MSG_QUOTA_EXCEEDED
@@ -23,4 +40,8 @@ export type OpfsMessageType =
     | typeof OPFS_MSG_WRITE_FAILED
     | typeof OPFS_MSG_SKIP_QUOTA_EXCEEDED
     | typeof OPFS_MSG_BACKGROUND_FETCH_FAILED
-    | typeof OPFS_MSG_BACKGROUND_FETCH_ABORTED;
+    | typeof OPFS_MSG_BACKGROUND_FETCH_ABORTED
+    | typeof OPFS_MSG_BACKGROUND_FETCH_COMPLETED
+    | typeof OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN
+    | typeof OPFS_MSG_RANGE_CACHE_FETCH_STARTED
+    | typeof OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE;

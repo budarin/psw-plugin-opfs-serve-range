@@ -2,32 +2,33 @@
 
 [Русская версия](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/README.ru.md)
 
-Service Worker plugins and utilities for [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker) that serve HTTP Range requests from files stored in Origin Private File System (OPFS).
-
 [![CI](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/budarin/psw-plugin-opfs-serve-range/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@budarin/psw-plugin-opfs-serve-range?color=cb0000)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 [![npm](https://img.shields.io/npm/dt/@budarin/psw-plugin-opfs-serve-range)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 [![bundle](https://img.shields.io/bundlephobia/minzip/@budarin/psw-plugin-opfs-serve-range)](https://bundlephobia.com/result?p=@budarin/psw-plugin-opfs-serve-range)
 [![license](https://img.shields.io/npm/l/@budarin/psw-plugin-opfs-serve-range)](https://www.npmjs.com/package/@budarin/psw-plugin-opfs-serve-range)
 
-Large media files and other heavy assets are almost always requested in chunks via HTTP Range rather than as a single download. When such files live in a regular HTTP cache (Cache API), the service worker often has to read and process the entire file to serve a small range, which is wasteful in terms of memory and CPU and quickly hits storage limits on low‑end devices.
+Service Worker plugins and utilities for [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker). Large files are stored in the Origin Private File System (OPFS), and byte-range (HTTP Range) requests are served directly from those files: you can read any part of a file without reading from the start, unlike with the Cache API. You configure quota limits, eviction (LRU), and pinned resources. The package supports "download in the background and use offline" via the Background Fetch API.
 
-This package takes a different approach: it uses the Origin Private File System (OPFS) as the primary storage for large resources and range responses. Files are stored in OPFS in a custom format (one file per URL plus a metadata footer), and ranges are read directly from the file system instead of Cache API. On top of that, the package provides plugins for precaching, background downloads, and serving range requests.
+Detailed cache behavior (limits, LRU, eviction, notifications): [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
-Unlike `@budarin/psw-plugin-serve-range-requests`, which uses the Cache API: cached data can only be read **sequentially**, with no random access, so serving a range at the end or in the middle of a large file requires reading everything from the start up to that point. This package uses OPFS: the requested range is read directly from the file (random access), with no need to read preceding bytes — any part of the file is equally fast to access. In addition, you control quota and eviction (limits, LRU, pinned resources, tab notifications), “download in background, then use offline” is supported (Background Fetch, precache), and utilities are provided for your own OPFS read/write plugins.
+---
 
-### What this package provides
+## Contents
 
-- **opfsServeRange** – reads files from OPFS and serves byte ranges.
-- **opfsRangeFromNetworkAndCache** – handles requests that `opfsServeRange` did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally starts a full background download into OPFS; only fully downloaded files are cached. If the tab or browser is closed or the network drops, the download is aborted; the next request for the same URL starts a new full download (which may be slow or expensive for large files). If you need downloads that survive tab or browser closes, or your files are very large, use the Background Fetch API utilities from `@budarin/pluggable-serviceworker`. **Note:** when the server returns `200` for a Range request without `Content-Length`, the response body is buffered fully in memory (`response.blob()`) to serve the range — avoid very large files without `Content-Length` to prevent high memory usage.
-- **opfsBackgroundFetch** – on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by `opfsServeRange`.
-- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **getRoot**, **isOpfsAvailable** – low‑level utilities for writing your own OPFS plugins; **getRoot()** returns a cached OPFS root (avoids repeated navigator.storage.getDirectory calls); **isOpfsAvailable()** provides a synchronous check for OPFS support.
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Usage scenarios](#usage-scenarios)
+  - [Cache on first request](#cache-on-first-request)
+  - [Download for offline (Background Fetch)](#download-for-offline-background-fetch)
+- [Reference: Service worker plugins](#reference-service-worker-plugins)
+- [Reference: Client API](#reference-client-api)
+- [OPFS storage format](#opfs-storage-format)
+- [Writing your own OPFS plugin](#writing-your-own-opfs-plugin)
+- [Requirements](#requirements)
+- [License](#license)
 
-In environments without OPFS support, plugin factories return `undefined`.
-
-All cache files live under a single OPFS directory. The directory name is configured once via **configureOpfs({ folderName })** before registering plugins (defaults to `'range-requests-cache'`). To clear the cache, call **clearOpfsCache()** – the whole directory is removed. Inside, there is one file per URL; all metadata is stored in the file footer.
-
-Detailed cache behavior (limits, LRU, eviction, notifications) is described in [docs/opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian version: [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
+---
 
 ## Install
 
@@ -35,9 +36,16 @@ Detailed cache behavior (limits, LRU, eviction, notifications) is described in [
 pnpm add @budarin/psw-plugin-opfs-serve-range
 ```
 
-## Usage
+---
 
-The following example shows how to configure media (video, map tiles, etc.) so that on the first request the content is loaded and stored in the local OPFS cache, and on subsequent requests – once fully downloaded – it is served from OPFS without hitting the network.
+## Quick start
+
+The simplest case: on the first request for a resource, data is loaded from the network and saved to OPFS. On later requests to the same URL, the response is served from cache without going to the network.
+
+To enable this, register two plugins in the service worker:
+
+- **opfsServeRange** — serves requested byte ranges from OPFS when the file is already in cache.
+- **opfsRangeFromNetworkAndCache** — when the file is not in cache, the request goes to the network; the response is streamed to the client immediately, and the file is saved to OPFS in the background when possible.
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
@@ -49,7 +57,7 @@ import {
 
 configureOpfs({
     folderName: 'ranges-media-cache',
-    maxCacheFraction: 0.5, // fraction of origin quota reserved for this cache (default 0.5)
+    maxCacheFraction: 0.5,
 });
 
 initServiceWorker(
@@ -67,37 +75,29 @@ initServiceWorker(
 );
 ```
 
-Here `opfsServeRange` serves ranges from OPFS when the file is already cached; `opfsRangeFromNetworkAndCache` goes to the network when the file is not cached yet, streams the response to the client, and optionally fills OPFS in the background so that subsequent requests are served from OPFS. You can add **opfsBackgroundFetch** as needed; the set and order of plugins are fully configurable.
+After this setup, requests to URLs in `include` check the OPFS cache first; if the file is not there, the request goes to the network and a successful response is written to cache. You do not need any code on the page for this scenario.
 
-### Example: “Download for offline” (Background Fetch) + Range playback
+Important: a download started by opfsRangeFromNetworkAndCache is aborted when the tab is closed or the network fails. To show whether such a background cache fetch is in progress, the page can subscribe to **onOPFSRangeCacheFetchStarted** and **onOPFSRangeCacheFetchAllDone** (to turn the indicator on and off). If you need a download that continues after the tab is closed, use the [Download for offline](#download-for-offline-background-fetch) scenario.
 
-**Scenario:** The user clicks “Download for offline” → a large file (video, map) is downloaded in the background; the tab may be closed. After the download finishes, a player or map viewer issues Range requests for this URL – responses come from OPFS, without re‑downloading the file. The goal is the full cycle “button → background download → offline playback from cache”.
+---
 
-**Client (page)** – trigger a background download based on user action:
+## Usage scenarios
 
-```typescript
-import {
-    startBackgroundFetch,
-    isBackgroundFetchSupported,
-} from '@budarin/pluggable-serviceworker/client/background-fetch';
+### Cache on first request
 
-async function downloadForOffline(
-    url: string,
-    title: string,
-    downloadTotal?: number
-) {
-    const supported = await isBackgroundFetchSupported();
-    if (!supported) {
-        console.warn('Background Fetch API is not supported');
-        return;
-    }
-    const reg = await navigator.serviceWorker.ready;
-    const id = `offline-${Date.now()}`;
-    await startBackgroundFetch(reg, id, [url], { title, downloadTotal });
-}
-```
+For this scenario to work as intended, your server must support byte-range requests (HTTP Range): it should respond to requests that include a Range header with status 206 and a Content-Length header.
 
-**Service worker** – register plugins (after Background Fetch completes, the file is written into the range cache, and subsequent Range requests are served by `opfsServeRange`):
+How it works is described in [Quick start](#quick-start). In short: a request first checks the OPFS cache; if the file is missing, the request goes to the network, the response is sent to the client, and when possible it is also saved to OPFS. Later requests to the same URL are then served from cache. The plugins involved are opfsServeRange and opfsRangeFromNetworkAndCache. Quota, LRU eviction, and pinned resources are described in the [Plugin reference](#reference-service-worker-plugins).
+
+---
+
+### Download for offline (Background Fetch)
+
+In this scenario the user clicks something like "Download for offline"; selected files are downloaded in the background and the tab can be closed. When the download finishes, the app requests those same URLs with a Range header and receives data from cache.
+
+#### Service worker
+
+In the service worker, register the **opfsBackgroundFetch** plugin. It handles Background Fetch events and messages from the page (response to the filter include/exclude request), so you do not need to add a separate `message` listener.
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
@@ -129,17 +129,204 @@ initServiceWorker(
 );
 ```
 
+#### Client (page)
+
+The easiest approach is the high-level API: one function starts the download. It returns a promise that resolves when assets are written to OPFS, or rejects on error or user cancel.
+
+```typescript
+import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client';
+
+async function downloadForOffline(assets: string[], title: string, downloadTotal?: number) {
+    try {
+        const result = await startDownloadAssetsToOpfs({
+            assets,
+            title,
+            downloadTotal,
+            onProgress: (downloaded, total) => console.log(`${downloaded}/${total}`),
+            signal: myAbortController.signal,
+        });
+        console.log('Cached:', result.assets);
+    } catch (e) {
+        if (e && typeof e === 'object' && 'reason' in e) {
+            console.warn('Download', (e as { reason: string }).reason);
+        } else throw e;
+    }
+}
+```
+
+If you use React, the package provides a hook that keeps download state (status, progress in bytes and per file, errors, result). When the component unmounts, the hook only stops updating state; the download continues in the background. Call reset() to cancel.
+
+```typescript
+import { useDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client/react';
+
+function DownloadButton() {
+    const { startDownload, status, progress, fileProgress, error, data, reset } = useDownloadAssetsToOpfs();
+    return (
+        <>
+            <button onClick={() => startDownload({ assets: ['/assets/video.mp4'], title: 'Video' })}>
+                Download
+            </button>
+            {status === 'pending' && progress && <span>{progress.downloaded}/{progress.total}</span>}
+            {status === 'success' && data && <span>Done: {data.assets?.join(', ')}</span>}
+            {status === 'failure' && error && <span>Failed</span>}
+        </>
+    );
+}
+```
+
+If you need custom logic (your own download id, filtering, or callbacks), you can build the flow from low-level functions; see [Reference: Client API](#reference-client-api). The opfsBackgroundFetch plugin in the service worker still performs the write to OPFS; the download id must start with the prefix `opfs-ranges-` (constant **OPFS_BACKGROUND_FETCH_ID_PREFIX** in the package).
+
+---
+
+## Reference: Service worker plugins
+
+Global cache settings are set via configureOpfs: the OPFS folder name and the fraction of storage quota. Call configureOpfs before registering plugins. By default the folder name is `range-requests-cache` and the quota fraction is 0.5. To clear the entire cache, use clearOpfsCache().
+
+In environments where OPFS is not available, plugin factories return undefined.
+
+| Plugin | Purpose |
+|--------|---------|
+| **opfsServeRange** | Reads files from OPFS and serves requested byte ranges (206). |
+| **opfsRangeFromNetworkAndCache** | Requests opfsServeRange did not serve: network → stream to client and optionally write to OPFS in background. Download is aborted when the tab closes or the network drops. |
+| **opfsBackgroundFetch** | On successful Background Fetch completion, writes responses to OPFS; subsequent Range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**). |
+| **opfsBackgroundFetchFilter** | Message handler only: responds to OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER with current include/exclude. Server-side counterpart to client **getBackgroundFetchFilter()**. Standalone plugin — for a custom SW you can register only this plugin with your own include/exclude. |
+
+**opfsServeRange**
+
+```ts
+opfsServeRange(options?: {
+  order?: number;
+  enableLogging?: boolean;
+  include?: string[];
+  exclude?: string[];
+  rangeResponseCacheControl?: string; // default: max-age=31536000, immutable
+}): Plugin | undefined
+```
+
+**opfsRangeFromNetworkAndCache**
+
+```ts
+opfsRangeFromNetworkAndCache(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[];
+}): Plugin | undefined
+```
+
+**opfsBackgroundFetch**
+
+```ts
+opfsBackgroundFetch(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[];
+}): Plugin | undefined
+```
+
+**opfsBackgroundFetchFilter**
+
+Plugin that only answers the filter request (getBackgroundFetchFilter on the client). When using the full stack you do not need to register it separately — opfsBackgroundFetch calls it internally. For a custom service worker, register opfsBackgroundFetchFilter with the same include/exclude as your download logic.
+
+```ts
+opfsBackgroundFetchFilter(options?: {
+  include?: string[];
+  exclude?: string[];
+}): Plugin
+```
+
+Pinned resources (the pinned option): an array of glob patterns for URLs. Resources matching these patterns are not evicted when space is low (LRU). Supported by both plugins that write to OPFS: opfsRangeFromNetworkAndCache and opfsBackgroundFetch.
+
+---
+
+## Reference: Client API
+
+Client-side functions are imported from `@budarin/psw-plugin-opfs-serve-range/client`; the React hook is in `@budarin/psw-plugin-opfs-serve-range/client/react`.
+
+### Downloading assets to OPFS
+
+For startDownloadAssetsToOpfs to work as intended, the service worker must register a plugin that answers the filter request — either **opfsBackgroundFetch** (which calls the filter plugin internally) or **opfsBackgroundFetchFilter** alone (for a custom SW). Otherwise the page cannot get the filter settings and the download may use the wrong set of URLs.
+
+- **getBackgroundFetchFilter()** — Asks the service worker for the current filter settings (include and exclude). Server-side counterpart is the **opfsBackgroundFetchFilter** plugin (or opfsBackgroundFetch, which calls it). Returns a promise with an object `{ include?, exclude? }`.
+
+- **filterAssetsForOpfs(assets, include?, exclude?, origin?)** — Filters a list of URLs by the same rules as the plugin (glob patterns). Use it together with the result of getBackgroundFetchFilter() when building your own download logic.
+
+- **startDownloadAssetsToOpfs(options)** — Asks the service worker for the filter, filters the URLs, starts Background Fetch. The promise resolves when the service worker has written the files to OPFS; the result includes lists of written, failed/skipped, and filtered-out URLs. You can pass progress callbacks and a cancel signal.
+
+```ts
+interface StartDownloadAssetsToOpfsOptions {
+    assets: string[];
+    title?: string;
+    downloadTotal?: number;
+    onProgress?: (downloaded: number, total: number) => void;
+    onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
+    signal?: AbortSignal;
+}
+startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
+// Resolve: { registrationId: string; assets?: string[]; written?; failedOrSkipped?; filteredOut? }
+// Reject: DownloadAssetsToOpfsRejected | Error
+```
+
+- **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, error, result, and a reset function. Calling reset() cancels the current download (if one is in progress) and clears state. Requires React as a peer dependency.
+
+```ts
+useDownloadAssetsToOpfs(): {
+    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>;
+    status: 'idle' | 'pending' | 'success' | 'failure' | 'aborted';
+    progress: { downloaded: number; total: number } | null;
+    fileProgress: { loadedAssets: string[]; totalCount: number } | null;
+    error: Error | DownloadAssetsToOpfsRejected | null;
+    data: DownloadAssetsToOpfsResult | null;
+    reset: () => void;
+}
+```
+
+**Low-level:** `startBackgroundFetch(registration, id, urls, options)` and `isBackgroundFetchSupported()` from `@budarin/pluggable-serviceworker/client/background-fetch`; subscribe to `onOPFSBackgroundFetchCompleted`, `onOPFSBackgroundFetchFailed`, `onOPFSBackgroundFetchAborted`, `onOPFSBackgroundFetchFileWritten` from this package. The download id must start with `opfs-ranges-` (see **OPFS_BACKGROUND_FETCH_ID_PREFIX**).
+
+### Subscriptions to service worker messages
+
+Each function takes a handler and returns a function to unsubscribe. When each type of message is sent is described in [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md).
+
+**Blocklist:** When writing to OPFS, the browser may throw QuotaExceeded. If the number of bytes already written is at least the current total cache size, eviction cannot free enough space, so that URL is added to a blocklist (kept in the service worker’s memory for its lifetime). On later requests for that URL, the plugin does not attempt to cache the response again and sends a message so the client can show a warning to the user.
+
+- **onOPFSQuotaExceeded** — Quota exceeded while writing to OPFS.
+- **onOPFSWriteSkipped** — Write skipped (file does not fit even after eviction).
+- **onOPFSEvictionCompleted** — Eviction completed.
+- **onOPFSWriteFailed** — Write error.
+- **onOPFSSkipQuotaExceeded** — Repeat request for a URL in the blocklist (plugin does not cache, only notifies).
+- **onOPFSBackgroundFetchFailed** — Background Fetch completed with failure.
+- **onOPFSBackgroundFetchAborted** — Background Fetch aborted.
+- **onOPFSBackgroundFetchCompleted** — Background Fetch completed successfully, assets in OPFS.
+- **onOPFSBackgroundFetchFileWritten** — Another file written to OPFS (per-file progress).
+- **onOPFSRangeCacheFetchStarted** — Plugin opfsRangeFromNetworkAndCache started a background cache fetch (“cache on first request” scenario). Use it to show a “background download in progress” indicator.
+- **onOPFSRangeCacheFetchAllDone** — All such background cache fetches have finished. Use it to hide the indicator.
+
+Event types: `OpfsMessagePayload`; constants `OPFS_MSG_*`, `OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER`, `OPFS_RESPONSE_BACKGROUND_FETCH_FILTER`.
+
+### Cache management utilities
+
+These functions are called from the page. To clear the entire cache, call clearOpfsCache() from the service worker or from the page.
+
+- **listOpfsCachedResources()** — List of cached resources (`Promise<OpfsCachedResource[]>`).
+- **hasInOpfsCache(url)** — Whether the URL is in the cache.
+- **deleteFromOpfsCache(url)** — Remove the resource by URL from the cache.
+
+---
+
 ## OPFS storage format
 
-If you implement your own writer plugin or serve files from OPFS directly (bypassing these plugins), the format details are important. The cache key is `hex(SHA-256(URL))` (64 characters). There is one OPFS file per URL: the file layout is `[body][JSON metadata][4‑byte JSON length (uint32 LE)]`. To clear the cache, delete a file by key or remove the entire directory via `clearOpfsCache`.
+For custom plugins or direct file access. File key: `hex(SHA-256(URL))` (64 chars). One file per URL: resource body, then footer (JSON metadata + 4-byte length). Metadata fields in JSON: `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. All plugins in this package use the same format and shared **urlToOpfsKey**.
 
-**Important:** if you serve a file from OPFS **as a whole** (e.g. `200` without Range) to a player or other code, you must strip the footer and only return the body: first read the footer, compute `bodySize`, then do `new Response(file.slice(0, bodySize), ...)`. The `opfsServeRange` plugin only serves body ranges (`206`) and never exposes the footer.
+**Important:** When serving a file in full (200 without Range), return only the body, not the footer: compute `bodySize` from the footer and use `file.slice(0, bodySize)`. The opfsServeRange plugin only serves body ranges (206); the footer is never exposed.
 
-Metadata example (JSON footer): `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. All plugins in this package use the same format and the shared `urlToOpfsKey`. The `evictable` field (default `true`) indicates whether the resource can be evicted by the LRU algorithm; `false` means the resource is pinned and will not be removed.
+---
 
 ## Writing your own OPFS plugin
 
-If you need to write into OPFS following the same format as the built‑in plugins, you can use **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Example:
+To write to OPFS with your own logic using the same format: **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**.
 
 ```typescript
 import {
@@ -157,217 +344,15 @@ const metadata = metadataFromResponse(response, url);
 await writeToOpfs(dir, key, response.body, metadata);
 ```
 
-The response may not have a `Content-Length` header – when writing the full body, the size is determined automatically from the bytes written. When using limits, pass the fifth `options` argument to `writeToOpfs`: `{ url, knownSize }` (for example, `knownSize: metadata.size > 0 ? metadata.size : undefined`).
+The response may omit `Content-Length` — size is determined automatically when writing the full body. When using limits, pass the fifth `options` argument to `writeToOpfs`: `{ url, knownSize }`.
 
-## Client utilities
-
-Client‑side helpers are exported from the entry point `@budarin/psw-plugin-opfs-serve-range/client`. This section gives signatures, types, and examples; [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) only describes **when** the service worker sends messages (limits, LRU, eviction), not the API.
-
-### Message subscriptions
-
-Each function takes a handler and returns an unsubscribe function (call it to remove the subscription). Below are the subscriptions for messages that the service worker actually sends in the current version.
-
-```ts
-type Unsubscribe = () => void;
-```
-
-- **`onOPFSQuotaExceeded`** — subscribe to notification when the browser throws QuotaExceeded while writing to OPFS.
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-    };
-
-    onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSWriteSkipped`** — subscribe to notification when the write was skipped (file does not fit even after eviction).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-      size: number; // File size in bytes
-      reason: string; // Reason the write was not started
-    };
-
-    onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSEvictionCompleted`** — subscribe to notification when eviction has finished.
-
-    ```ts
-    type EventData = {
-      type: string;
-      count: number; // Number of files removed by eviction
-    };
-
-    onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSWriteFailed`** — subscribe to notification on write error (network, disk, partial file removed).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url?: string;
-      reason: string; // Reason the write failed
-    };
-
-    onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSSkipQuotaExceeded`** — subscribe to notification on repeat request for a blocklisted URL (resource not cached).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-    };
-
-    onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSBackgroundFetchFailed`** — subscribe to notification when a Background Fetch completes with failure.
-
-    ```ts
-    type EventData = { type: string; registrationId?: string };
-    onOPFSBackgroundFetchFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSBackgroundFetchAborted`** — subscribe to notification when a Background Fetch is aborted.
-
-    ```ts
-    type EventData = { type: string; registrationId?: string };
-    onOPFSBackgroundFetchAborted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-### Cache management utilities
-
-Functions to list cached resources, check by URL, and remove by URL. Called from the client (page); use when you need to show the user what is cached and let them delete selected items.
-
-- **`listOpfsCachedResources`** — returns the list of cached resources.
-
-    ```ts
-    interface OpfsCachedResource {
-      url: string;
-      size: number;
-      type: string | undefined;
-      lastModified: string | undefined;
-    }
-
-    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-    ```
-
-- **`hasInOpfsCache`** — checks whether a URL is in the cache.
-
-    ```ts
-    hasInOpfsCache(url: string): Promise<boolean>
-    ```
-
-- **`deleteFromOpfsCache`** — removes a resource by URL from the cache.
-
-    ```ts
-    deleteFromOpfsCache(url: string): Promise<void>
-    ```
-
-Types `OpfsMessagePayload` and `OpfsCachedResource` are exported. Message type constants (name equals the string value in `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`, `OPFS_MSG_BACKGROUND_FETCH_FAILED`, `OPFS_MSG_BACKGROUND_FETCH_ABORTED`.
-
-### Tab notifications about quota and limits
-
-Example: subscribe to events and show the user which resource failed to cache; unsubscribe when the component unmounts.
-
-```typescript
-import {
-    onOPFSQuotaExceeded,
-    onOPFSSkipQuotaExceeded,
-    type OpfsMessagePayload,
-} from '@budarin/psw-plugin-opfs-serve-range/client';
-
-const unsubQuota = onOPFSQuotaExceeded((event: MessageEvent) => {
-    const data = event.data as { type: string } & OpfsMessagePayload;
-    console.warn('OPFS: quota exceeded', data.url);
-    // e.g. showToast(`Failed to save: ${data.url}`);
-});
-
-const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
-    const data = event.data as { type: string } & OpfsMessagePayload;
-    console.warn('OPFS: resource not cached (quota)', data.url);
-});
-
-// when no longer needed:
-// unsubQuota(); unsubSkip();
-```
-
-When each message is sent: [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md) (Russian: [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
-
-### Clearing the cache and managing individual resources
-
-To wipe the whole cache (e.g. from a UI button or on logout), call **clearOpfsCache()** from the service worker or client – the entire cache directory will be deleted.
-
-If you need finer‑grained control (show a list of cached resources and let users delete specific ones), use the client utilities from `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (see above). The list is built from metadata in the footer (each file stores its original `url`).
-
-## Plugin specifications
-
-Global cache settings (folder name, quota fraction) are set in **configureOpfs({ folderName, maxCacheFraction })**. Below are the package plugins and their options.
-
-- **`opfsServeRange`** — reads files from OPFS and serves requested byte ranges.
-
-    ```ts
-    opfsServeRange(options?: {
-      order?: number;
-      enableLogging?: boolean;
-      include?: string[];
-      exclude?: string[];
-      rangeResponseCacheControl?: string; // Cache-Control for 206 responses (default: max-age=31536000, immutable)
-    }): Plugin | undefined
-    ```
-
-- **`opfsRangeFromNetworkAndCache`** — handles requests that opfsServeRange did not serve (resource not in cache yet): goes to the network, streams the response to the client, and optionally fills OPFS in the background.
-
-    ```ts
-    opfsRangeFromNetworkAndCache(options?: {
-      order?: number;
-      include?: string[];
-      exclude?: string[];
-      enableLogging?: boolean;
-      pinned?: string[]; // glob patterns for URLs protected from eviction
-    }): Plugin | undefined
-    ```
-
-- **`opfsBackgroundFetch`** — on successful Background Fetch completion, writes responses into OPFS; subsequent Range requests for these URLs are served by opfsServeRange.
-
-    ```ts
-    opfsBackgroundFetch(options?: {
-      order?: number;
-      include?: string[];
-      exclude?: string[];
-      enableLogging?: boolean;
-      pinned?: string[]; // glob patterns for URLs protected from eviction
-    }): Plugin | undefined
-    ```
-
-To trigger downloads from the client: `@budarin/pluggable-serviceworker/client/background-fetch`.
-
-### Pinned resources (eviction protection)
-
-Both caching plugins that write to OPFS (`opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`) support the `pinned` option: an array of glob patterns for URLs that should never be evicted by the LRU eviction algorithm. Resources matching these patterns are stored with `evictable: false` in metadata and will not be removed even when the cache limit is reached.
-
-Example: mark important media files as pinned so they are never evicted, while allowing other cached media to be evicted:
-
-```typescript
-opfsRangeFromNetworkAndCache({
-    include: ['*.mp4', '*.webm'],
-    pinned: ['/assets/media/featured/**'], // featured media files won't be evicted
-});
-```
-
-By default, all resources are evictable (`evictable: true`). Only resources matching patterns in `pinned` are protected from eviction.
+---
 
 ## Requirements
 
-- A browser with OPFS support (Chrome 108+, Edge 108+, Firefox 111+, Safari 16.4+) and a secure context (HTTPS).
+You need a browser that supports OPFS (Chrome 108+, Edge 108+, Firefox 111+, Safari 16.4+) and a secure context (the page must be loaded over HTTPS).
+
+---
 
 ## License
 

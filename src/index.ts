@@ -67,6 +67,13 @@ export {
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
     OPFS_MSG_BACKGROUND_FETCH_FAILED,
     OPFS_MSG_BACKGROUND_FETCH_ABORTED,
+    OPFS_MSG_BACKGROUND_FETCH_COMPLETED,
+    OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN,
+    OPFS_MSG_RANGE_CACHE_FETCH_STARTED,
+    OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE,
+    OPFS_BACKGROUND_FETCH_ID_PREFIX,
+    OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
+    OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
 } from './opfsMessages.js';
 export type { OpfsMessageType } from './opfsMessages.js';
 export type { WriteToOpfsOptions } from './opfsWrite.js';
@@ -276,5 +283,8 @@ export type { RangeSpec, Build206Options } from './opfsRangeUtil.js';
 export { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 export { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 export type { OpfsRangeFromNetworkAndCacheOptions } from './opfsRangeFromNetworkAndCache.js';
-export { opfsBackgroundFetch } from './opfsBackgroundFetch.js';
-export type { OpfsBackgroundFetchOptions } from './opfsBackgroundFetch.js';
+export { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
+export type {
+    OpfsBackgroundFetchOptions,
+    OpfsBackgroundFetchFilterOptions,
+} from './opfsBackgroundFetch.js';

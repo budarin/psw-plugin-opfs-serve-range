@@ -28,18 +28,31 @@
             "types": "./dist/client/index.d.ts",
             "import": "./dist/client/index.js",
             "default": "./dist/client/index.js"
+        },
+        "./client/react": {
+            "types": "./dist/client/react.d.ts",
+            "import": "./dist/client/react.js",
+            "default": "./dist/client/react.js"
         }
     },
     "peerDependencies": {
-        "@budarin/pluggable-serviceworker": "^1.17.0"
+        "@budarin/pluggable-serviceworker": "^1.17.0",
+        "react": ">=18.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        }
     },
     "dependencies": {
         "@budarin/http-constants": "^1.0.22"
     },
     "devDependencies": {
         "@budarin/pluggable-serviceworker": "^1.17.3",
+        "@types/react": "^18.3.12",
         "@types/serviceworker": "^0.0.193",
         "@types/web": "^0.0.340",
+        "react": "^18.3.1",
         "typescript": "^5.9.3",
         "vitest": "^4.0.18"
     },

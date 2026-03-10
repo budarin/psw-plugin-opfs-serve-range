@@ -1,23 +1,26 @@
 # @budarin/psw-plugin-opfs-serve-range
 
-Большие медиафайлы и другие «тяжёлые» ресурсы почти всегда запрашиваются по частям через HTTP Range, а не одним куском. Когда такие файлы лежат в обычном HTTP‑кеше (Cache API), сервис‑воркеру приходится каждый раз читать и обрабатывать весь файл, даже если клиенту нужен только небольшой диапазон. Это лишняя нагрузка на память и процессор, которая особенно больно бьёт по слабым устройствам и при небольшой квоте хранилища.
+Плагины и утилиты для [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker). Большие файлы хранятся в Origin Private File System (OPFS), а запросы по диапазону байтов (HTTP Range) обслуживаются напрямую из файлов: можно читать любую часть файла без последовательного прохода, в отличие от Cache API. Лимиты по квоте, вытеснение по LRU и список закреплённых ресурсов настраиваются вами. Поддерживается сценарий «скачать в фоне и смотреть офлайн» через Background Fetch.
 
-Этот пакет решает задачу по‑другому: он использует Origin Private File System (OPFS) как основное хранилище для больших ресурсов и ответов по Range. Файлы записываются в OPFS в собственном формате (один файл на URL плюс метаданные во футере), а диапазоны читаются напрямую из файловой системы, без Cache API. Поверх этого построены плагины для предзагрузки, фоновых загрузок и обслуживания range‑запросов.
+Подробнее о поведении кеша (лимиты, LRU, эвикция, оповещения): [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
-В отличие от `@budarin/psw-plugin-serve-range-requests`, который работает поверх Cache API: там данные читаются из кеша **только последовательно**, без произвольного доступа, поэтому запрос диапазона в конце или в середине большого файла заставляет читать всё от начала до нужного места. Этот пакет использует OPFS: нужный диапазон читается напрямую из файла (произвольный доступ), без прохода по предыдущим байтам — обращение к любой части файла одинаково быстро. Кроме того, квотой и эвикцией управляете вы (лимиты, LRU, закреплённые ресурсы, уведомления вкладок), поддерживаются сценарии «скачать в фоне — потом смотреть офлайн» (Background Fetch, precache) и есть утилиты для своих плагинов записи и чтения из OPFS.
+---
 
-Пакет предоставляет плагины и утилиты для [@budarin/pluggable-serviceworker](https://www.npmjs.com/package/@budarin/pluggable-serviceworker) для обработки range‑запросов к файлам в OPFS:
+## Оглавление
 
-- **opfsServeRange** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
-- **opfsRangeFromNetworkAndCache** — подхватывает запросы, которые `opfsServeRange` не обслужил (ресурс ещё не в кеше): идёт в сеть, сразу отдаёт ответ клиенту и при необходимости запускает параллельно полную загрузку файла в OPFS; в кеш попадают только полностью загруженные файлы. При закрытии вкладки, браузера или обрыве сети загрузка прерывается — при следующем запросе к тому же URL загрузка начнётся заново. Для очень больших файлов и платных каналов стоит особенно внимательно отнестись к таким сценариям; если нужна загрузка, переживающая закрытие вкладки или браузера, используйте `Background Fetch API` и плагины из `@budarin/pluggable-serviceworker`. **Важно:** если сервер возвращает `200` на Range‑запрос без заголовка `Content-Length`, тело ответа полностью буферизуется в памяти (`response.blob()`) для отдачи диапазона — избегайте очень больших файлов без `Content-Length`, чтобы не превысить лимит памяти.
-- **opfsBackgroundFetch** — при успешном завершении загрузки при помощи `Background Fetch API` записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает `opfsServeRange`.
-- **writeToOpfs**, **metadataFromResponse**, **urlToOpfsKey**, **getRoot**, **isOpfsAvailable** — утилиты, которые могут понадобиться для написания собственных плагинов записи в OPFS; **getRoot()** — кешированный корень OPFS (избегает повторных вызовов navigator.storage.getDirectory); **isOpfsAvailable()** — утилита для синхронной проверки наличия OPFS.
+- [Установка](#установка)
+- [Быстрый старт](#быстрый-старт)
+- [Сценарии использования](#сценарии-использования)
+  - [Кеш при первом запросе](#кеш-при-первом-запросе)
+  - [«Скачать для офлайна» (Background Fetch)](#скачать-для-офлайна-background-fetch)
+- [Справочник: плагины (сервис-воркер)](#справочник-плагины-сервис-воркер)
+- [Справочник: клиентский API](#справочник-клиентский-api)
+- [Формат хранения в OPFS](#формат-хранения-в-opfs)
+- [Свой плагин записи в OPFS](#свой-плагин-записи-в-opfs)
+- [Требования](#требования)
+- [Лицензия](#лицензия)
 
-В средах без поддержки OPFS фабрики плагинов возвращают `undefined`.
-
-Все файлы кеша лежат в одной папке OPFS. Её имя задаётся один раз в **configureOpfs({ folderName })** до регистрации плагинов (по умолчанию `'range-requests-cache'`). Чтобы очистить кеш, вызовите **clearOpfsCache()** — удалится вся папка. Внутри — один файл на URL, все метаданные хранятся в самом файле.
-
-Подробное описание поведения кеша (лимиты, LRU, эвикция, оповещения) — в [docs/opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
+---
 
 ## Установка
 
@@ -25,9 +28,16 @@
 pnpm add @budarin/psw-plugin-opfs-serve-range
 ```
 
-## Использование
+---
 
-В следующем примере показано, как сделать так, чтобы медиа (видео, тайлы карт и т.п.) по первому запросу подгружались и сохранялись в локальный кэш, а при повторных запросах — после полной загрузки — отдавались из кэша без сети.
+## Быстрый старт
+
+Самый простой сценарий: при первом запросе к ресурсу данные загружаются из сети и сохраняются в хранилище OPFS. При следующих запросах к тому же адресу ответ отдаётся уже из кеша, без обращения к сети.
+
+Для этого в сервис-воркере подключают два плагина:
+
+- **opfsServeRange** — отдаёт запрошенные диапазоны байтов из OPFS, если файл уже есть в кеше.
+- **opfsRangeFromNetworkAndCache** — если файла в кеше ещё нет, запрос уходит в сеть; ответ сразу передаётся клиенту потоком, а в фоне при необходимости тот же файл сохраняется в OPFS.
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
@@ -39,7 +49,7 @@ import {
 
 configureOpfs({
     folderName: 'ranges-media-cache',
-    maxCacheFraction: 0.5, // доля квоты origin для кеша (по умолчанию 0.5)
+    maxCacheFraction: 0.5,
 });
 
 initServiceWorker(
@@ -57,37 +67,29 @@ initServiceWorker(
 );
 ```
 
-Здесь два плагина: **opfsServeRange** отдаёт диапазоны из OPFS, если файл уже в кеше; **opfsRangeFromNetworkAndCache** — если файла ещё нет — идёт в сеть, сразу отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне. Так при следующих запросах тот же URL уже обслужит opfsServeRange из кэша. При необходимости можно добавить **opfsBackgroundFetch**; состав и порядок плагинов можно менять под свою задачу.
+После такой настройки запросы к адресам из списка `include` сначала проверяют кеш в OPFS; если файла там нет, идёт обращение в сеть и при успешной загрузке — запись в кеш. Отдельный код на странице для этого сценария не нужен.
 
-### Пример: загрузка по кнопке (Background Fetch) и отдача по range
+Важно: загрузка, которую запускает плагин opfsRangeFromNetworkAndCache, прерывается при закрытии вкладки или обрыве сети. О том, идёт ли такая фоновая загрузка в кеш, страница может узнавать по подпискам **onOPFSRangeCacheFetchStarted** и **onOPFSRangeCacheFetchAllDone** (включить и выключить индикатор). Если нужна загрузка, которая продолжается и после закрытия вкладки, используйте сценарий [«Скачать для офлайна»](#скачать-для-офлайна-background-fetch).
 
-**Что реализует пример:** Пользователь нажимает «Скачать для офлайна» → большой файл (видео, карта) качается в фоне, можно закрыть вкладку. После завершения загрузки плеер или карта запрашивают этот URL с заголовком Range — ответы идут из кэша, без повторной загрузки. Цель: полный цикл «кнопка → фоновая загрузка → воспроизведение/просмотр из кэша».
+---
 
-**Клиент (страница)** — запуск загрузки по действию пользователя:
+## Сценарии использования
 
-```typescript
-import {
-    startBackgroundFetch,
-    isBackgroundFetchSupported,
-} from '@budarin/pluggable-serviceworker/client/background-fetch';
+### Кеш при первом запросе
 
-async function downloadForOffline(
-    url: string,
-    title: string,
-    downloadTotal?: number
-) {
-    const supported = await isBackgroundFetchSupported();
-    if (!supported) {
-        console.warn('Background Fetch API не поддерживается');
-        return;
-    }
-    const reg = await navigator.serviceWorker.ready;
-    const id = `offline-${Date.now()}`;
-    await startBackgroundFetch(reg, id, [url], { title, downloadTotal });
-}
-```
+Чтобы сценарий работал как задумано, сервер должен поддерживать запросы по диапазону байтов (HTTP Range): на запрос с заголовком Range он должен отвечать статусом 206 и указывать размер в заголовке Content-Length.
 
-**Сервис-воркер** — регистрация плагинов (по завершении Background Fetch файл пишется в range cache, дальше range-запросы обслуживает opfsServeRange):
+Как это устроено, описано в разделе [Быстрый старт](#быстрый-старт). Кратко: при запросе сначала проверяется кеш в OPFS; если файла нет, запрос уходит в сеть, ответ отдаётся клиенту и при возможности сохраняется в OPFS. Следующие запросы по тому же адресу уже обслуживаются из кеша. Используются плагины opfsServeRange и opfsRangeFromNetworkAndCache. Настройки квоты, вытеснения по LRU и закреплённых ресурсов описаны в [Справочнике по плагинам](#справочник-плагины-сервис-воркер).
+
+---
+
+### «Скачать для офлайна» (Background Fetch)
+
+В этом сценарии пользователь нажимает кнопку вроде «Скачать для офлайна»; выбранные файлы загружаются в фоне, вкладку можно закрыть. После завершения загрузки приложение обращается к тем же адресам с запросом диапазона байтов (Range) и получает данные уже из кеша.
+
+#### Сервис-воркер
+
+В сервис-воркере нужно зарегистрировать плагин **opfsBackgroundFetch**. Он обрабатывает события Background Fetch и сообщения от страницы (ответ на запрос фильтра include/exclude), поэтому отдельно вешать обработчик `message` не требуется.
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
@@ -119,17 +121,208 @@ initServiceWorker(
 );
 ```
 
-## Схема хранения в OPFS
+#### Клиент (страница)
 
-Тем, кто пишет свой плагин записи или отдаёт файл из OPFS в обход плагинов, пригодятся детали формата. Ключ файла — `hex(SHA-256(URL))` (64 символа). Один файл на URL: сначала тело ресурса, в конце футер (JSON с метаданными + 4 байта длины). Очистка — удалить файл по ключу или всю папку через clearOpfsCache.
+Удобнее всего использовать высокоуровневый API: одна функция запускает загрузку. Она возвращает обещание (промис), которое выполняется, когда ресурсы записаны в OPFS, или отклоняется при ошибке или отмене пользователем.
 
-**Важно:** если вы отдаёте файл из OPFS **целиком** (например, 200 без Range) плееру или другому коду — отдавайте только тело, без футера: сначала прочитайте футер и вычислите `bodySize`, затем `new Response(file.slice(0, bodySize), ...)`. Плагин opfsServeRange отдаёт только диапазоны тела (206), футер в ответ не попадает.
+```typescript
+import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client';
 
-Пример метаданных в футере (JSON): `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. Все плагины пакета используют один формат и общий `urlToOpfsKey`. Поле `evictable` (по умолчанию `true`) указывает, можно ли эвиктить ресурс алгоритмом LRU; `false` означает, что ресурс закреплён и не будет удалён.
+async function downloadForOffline(
+    assets: string[],
+    title: string,
+    downloadTotal?: number
+) {
+    try {
+        const result = await startDownloadAssetsToOpfs({
+            assets,
+            title,
+            downloadTotal,
+            onProgress: (downloaded, total) => console.log(`${downloaded}/${total}`),
+            signal: myAbortController.signal,
+        });
+        console.log('Закешировано:', result.assets);
+    } catch (e) {
+        if (e && typeof e === 'object' && 'reason' in e) {
+            console.warn('Загрузка', (e as { reason: string }).reason);
+        } else throw e;
+    }
+}
+```
+
+Если вы используете React, в пакете есть хук: он хранит состояние загрузки (статус, прогресс по байтам и по файлам, ошибки, результат). При размонтировании компонента хук только перестаёт обновлять состояние, загрузка в фоне продолжается; отменить её можно вызовом reset().
+
+```typescript
+import { useDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client/react';
+
+function DownloadButton() {
+    const { startDownload, status, progress, fileProgress, error, data, reset } = useDownloadAssetsToOpfs();
+    return (
+        <>
+            <button onClick={() => startDownload({ assets: ['/assets/video.mp4'], title: 'Видео' })}>
+                Скачать
+            </button>
+            {status === 'pending' && progress && <span>{progress.downloaded}/{progress.total}</span>}
+            {status === 'success' && data && <span>Готово: {data.assets?.join(', ')}</span>}
+            {status === 'failure' && error && <span>Ошибка</span>}
+        </>
+    );
+}
+```
+
+Если нужна своя логика (свой идентификатор загрузки, своя фильтрация или свои колбеки), сценарий можно собрать из низкоуровневых функций. Подробности — в разделе [Справочник: клиентский API](#справочник-клиентский-api). Запись в OPFS по-прежнему выполняет плагин opfsBackgroundFetch в сервис-воркере; идентификатор загрузки должен начинаться с префикса `opfs-ranges-` (константа **OPFS_BACKGROUND_FETCH_ID_PREFIX** в пакете).
+
+---
+
+## Справочник: плагины (сервис-воркер)
+
+Общие настройки кеша задаются через configureOpfs: имя папки в OPFS и доля квоты хранилища. Вызвать configureOpfs нужно до регистрации плагинов. По умолчанию имя папки — `range-requests-cache`, доля квоты — 0.5. Полностью очистить кеш можно функцией clearOpfsCache().
+
+В средах, где OPFS недоступен, фабрики плагинов возвращают undefined.
+
+| Плагин | Назначение |
+|--------|------------|
+| **opfsServeRange** | Читает файлы из OPFS и отдаёт запрошенные диапазоны байтов (206). |
+| **opfsRangeFromNetworkAndCache** | Запросы, которые opfsServeRange не обслужил: сеть → ответ клиенту и при необходимости фоновая запись в OPFS. Загрузка прерывается при закрытии вкладки/обрыве сети. |
+| **opfsBackgroundFetch** | По успешному завершению Background Fetch записывает ответы в OPFS; дальше range по этим URL обслуживает opfsServeRange. Обрабатываются только загрузки, чей идентификатор начинается с **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). Внутри в обработчике `message` вызывает плагин ответа на запрос фильтра (см. **opfsBackgroundFetchFilter**). |
+| **opfsBackgroundFetchFilter** | Только обработка `message`: на запрос типа OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER отвечает текущими include/exclude. Серверная пара к клиентскому **getBackgroundFetchFilter()**. Независимый плагин — для кастомного SW можно регистрировать один этот плагин со своими include/exclude. |
+
+**opfsServeRange**
+
+```ts
+opfsServeRange(options?: {
+  order?: number;
+  enableLogging?: boolean;
+  include?: string[];
+  exclude?: string[];
+  rangeResponseCacheControl?: string; // по умолчанию max-age=31536000, immutable
+}): Plugin | undefined
+```
+
+**opfsRangeFromNetworkAndCache**
+
+```ts
+opfsRangeFromNetworkAndCache(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[];
+}): Plugin | undefined
+```
+
+**opfsBackgroundFetch**
+
+```ts
+opfsBackgroundFetch(options?: {
+  order?: number;
+  include?: string[];
+  exclude?: string[];
+  enableLogging?: boolean;
+  pinned?: string[];
+}): Plugin | undefined
+```
+
+**opfsBackgroundFetchFilter**
+
+Плагин только для ответа на запрос фильтра (getBackgroundFetchFilter на клиенте). При использовании полного стека его отдельно регистрировать не нужно — opfsBackgroundFetch внутри себя вызывает этот плагин. Для кастомного сервис-воркера зарегистрируйте opfsBackgroundFetchFilter с теми же include/exclude, что и ваша логика загрузки.
+
+```ts
+opfsBackgroundFetchFilter(options?: {
+  include?: string[];
+  exclude?: string[];
+}): Plugin
+```
+
+Закреплённые ресурсы (опция pinned): массив масок (glob) по адресам. Ресурсы, подходящие под эти маски, не вытесняются при нехватке места (LRU). Поддерживается обоими плагинами, которые пишут в OPFS: opfsRangeFromNetworkAndCache и opfsBackgroundFetch.
+
+---
+
+## Справочник: клиентский API
+
+Entry point: `@budarin/psw-plugin-opfs-serve-range/client`. React-хук: `@budarin/psw-plugin-opfs-serve-range/client/react`.
+
+### Загрузка assets в OPFS
+
+**Условие:** в SW должен быть зарегистрирован плагин, отвечающий на запрос фильтра — либо **opfsBackgroundFetch** (он внутри вызывает плагин ответа по фильтру), либо отдельно **opfsBackgroundFetchFilter** (для кастомного SW). Иначе `startDownloadAssetsToOpfs` не получит фильтр и загрузка может быть некорректной.
+
+- **getBackgroundFetchFilter()** — запрашивает у сервис-воркера текущие настройки фильтра (include и exclude). Серверная пара — плагин **opfsBackgroundFetchFilter** (или opfsBackgroundFetch, который его вызывает). Возвращает обещание с объектом `{ include?, exclude? }`.
+
+- **filterAssetsForOpfs(assets, include?, exclude?, origin?)** — отбирает из списка адресов только те, что подходят под те же правила, что и плагин (по маскам glob). Удобно использовать вместе с результатом getBackgroundFetchFilter(), если собираете свою логику загрузки.
+
+- **startDownloadAssetsToOpfs(options)** — запрашивает у сервис-воркера фильтр, отбирает подходящие адреса, запускает Background Fetch. Обещание выполняется, когда сервис-воркер записал файлы в OPFS; в результате приходят списки записанных (written), пропущенных или с ошибкой (failedOrSkipped) и отфильтрованных (filteredOut). Можно передать колбеки прогресса и отмену через signal.
+
+```ts
+interface StartDownloadAssetsToOpfsOptions {
+    assets: string[];
+    title?: string;
+    downloadTotal?: number;
+    onProgress?: (downloaded: number, total: number) => void;
+    onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
+    signal?: AbortSignal;
+}
+startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
+// Resolve: { registrationId: string; assets?: string[]; written?; failedOrSkipped?; filteredOut? }
+// Reject: DownloadAssetsToOpfsRejected | Error
+```
+
+- **useDownloadAssetsToOpfs()** — React-хук. Возвращает функцию запуска загрузки, статус, прогресс по байтам и по файлам, ошибку, результат и функцию сброса. Вызов reset() отменяет текущую загрузку (если она идёт) и обнуляет состояние. Требуется установленный React (peer dependency).
+
+```ts
+useDownloadAssetsToOpfs(): {
+    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>;
+    status: 'idle' | 'pending' | 'success' | 'failure' | 'aborted';
+    progress: { downloaded: number; total: number } | null;
+    fileProgress: { loadedAssets: string[]; totalCount: number } | null;
+    error: Error | DownloadAssetsToOpfsRejected | null;
+    data: DownloadAssetsToOpfsResult | null;
+    reset: () => void;
+}
+```
+
+Низкоуровневый вариант: функции startBackgroundFetch и isBackgroundFetchSupported из пакета pluggable-serviceworker (клиентский подмодуль background-fetch), плюс подписки на сообщения от сервис-воркера (onOPFSBackgroundFetchCompleted, onOPFSBackgroundFetchFailed, onOPFSBackgroundFetchAborted, onOPFSBackgroundFetchFileWritten) из этого пакета. Идентификатор загрузки должен начинаться с префикса `opfs-ranges-` (константа **OPFS_BACKGROUND_FETCH_ID_PREFIX**).
+
+### Подписки на сообщения от сервис-воркера
+
+Каждая функция принимает обработчик и возвращает функцию для отписки. В каком случае сервис-воркер отправляет то или иное сообщение, описано в [описании поведения кеша](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
+
+**Blocklist (список исключённых адресов):** при записи в OPFS может произойти превышение квоты (QuotaExceeded). Если уже записано байт не меньше, чем текущий размер всего кеша, освободить место эвикцией бесполезно — такой URL заносят в blocklist (в памяти сервис-воркера на время его жизни). При следующих запросах к этому адресу плагин не пытается кешировать ответ снова и отправляет сообщение, чтобы клиент мог показать предупреждение пользователю.
+
+- **onOPFSQuotaExceeded** — квота исчерпана при записи в OPFS.
+- **onOPFSWriteSkipped** — запись пропущена (файл не влезает даже после эвикции).
+- **onOPFSEvictionCompleted** — эвикция завершена.
+- **onOPFSWriteFailed** — ошибка записи.
+- **onOPFSSkipQuotaExceeded** — повторный запрос к адресу из blocklist (плагин не кеширует, только оповещает).
+- **onOPFSBackgroundFetchFailed** — Background Fetch завершился с ошибкой.
+- **onOPFSBackgroundFetchAborted** — Background Fetch отменён.
+- **onOPFSBackgroundFetchCompleted** — Background Fetch успешно завершён, ресурсы в OPFS.
+- **onOPFSBackgroundFetchFileWritten** — очередной файл записан в OPFS (прогресс по файлам).
+- **onOPFSRangeCacheFetchStarted** — плагин opfsRangeFromNetworkAndCache начал фоновую загрузку в кеш (сценарий «кеш при первом запросе»). По нему можно включить индикатор «идёт фоновая загрузка».
+- **onOPFSRangeCacheFetchAllDone** — все такие фоновые загрузки завершены. По нему можно выключить индикатор.
+
+Типы данных и константы типов сообщений экспортируются из пакета (OpfsMessagePayload, константы OPFS_MSG_*, OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER, OPFS_RESPONSE_BACKGROUND_FETCH_FILTER).
+
+### Утилиты управления кешем
+
+Эти функции вызываются на странице (в клиентском коде). Полностью очистить кеш можно вызовом clearOpfsCache() из сервис-воркера или со страницы.
+
+- **listOpfsCachedResources()** — возвращает список закешированных ресурсов.
+- **hasInOpfsCache(url)** — проверяет, есть ли такой адрес в кеше.
+- **deleteFromOpfsCache(url)** — удаляет ресурс по адресу из кеша.
+
+---
+
+## Формат хранения в OPFS
+
+Раздел для тех, кто пишет свой плагин или читает файлы из OPFS напрямую. Имя файла в OPFS — 64 символа, hex от SHA-256 от URL. В одном файле: сначала тело ресурса, в конце — футер (метаданные в JSON и 4 байта длины). В метаданных хранятся url, size, type, etag, lastModified, lastAccessed, evictable. Все плагины пакета используют этот формат и общую функцию urlToOpfsKey.
+
+Если отдаёте файл целиком (ответ 200 без Range), отдавайте только тело, без футера: по футеру вычислите размер тела и отдайте file.slice(0, bodySize). Плагин opfsServeRange отдаёт только диапазоны тела (ответ 206), футер в ответ не входит.
+
+---
 
 ## Свой плагин записи в OPFS
 
-Если нужно записывать в OPFS по своей логике (тот же формат, что и у плагинов пакета), могут понадобиться **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**. Пример:
+Если нужно записывать в OPFS по своей логике, но в том же формате, что и плагины пакета, используйте функции getRoot, getOpfsDir, urlToOpfsKey, writeToOpfs, metadataFromResponse.
 
 ```typescript
 import {
@@ -147,217 +340,15 @@ const metadata = metadataFromResponse(response, url);
 await writeToOpfs(dir, key, response.body, metadata);
 ```
 
-Ответ может быть без заголовка `Content-Length` — при записи полного тела размер определяется автоматически. При использовании лимитов передайте в `writeToOpfs` пятый аргумент `options`: `{ url, knownSize }` (например, `knownSize: metadata.size > 0 ? metadata.size : undefined`).
+Ответ от сервера может быть без заголовка Content-Length; при записи полного тела размер определяется автоматически. Если у вас включены лимиты по квоте, в writeToOpfs передайте пятый аргумент options с полями url и knownSize.
 
-## Клиентские утилиты
-
-Клиентские хелперы экспортируются из entry point `@budarin/psw-plugin-opfs-serve-range/client`. В этом разделе — сигнатуры, типы и примеры; в [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md) описано только **когда** сервис-воркер шлёт сообщения (лимиты, LRU, эвикция), не API.
-
-### Подписки на сообщения
-
-Каждая функция принимает обработчик и возвращает функцию отписки (вызов снимает подписку). Ниже перечислены подписки, сообщения которых сервис-воркер реально отправляет в текущей версии.
-
-```ts
-type Unsubscribe = () => void;
-```
-
-- **`onOPFSQuotaExceeded`** — подписка на уведомление об исчерпании квоты при записи в OPFS.
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-    };
-
-    onOPFSQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSWriteSkipped`** — подписка на уведомление о пропуске записи (файл не влезает даже после эвикции).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-      size: number; // Размер файла в байтах
-      reason: string; // Причина (почему запись не начата)
-    };
-
-    onOPFSWriteSkipped(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSEvictionCompleted`** — подписка на уведомление о завершении эвикции.
-
-    ```ts
-    type EventData = {
-      type: string;
-      count: number; // Число удалённых при эвикции файлов
-    };
-
-    onOPFSEvictionCompleted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSWriteFailed`** — подписка на уведомление об ошибке записи (сеть, диск, удалён частичный файл).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url?: string;
-      reason: string; // Причина ошибки записи
-    };
-
-    onOPFSWriteFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSSkipQuotaExceeded`** — подписка на уведомление о повторном запросе к URL из blocklist (ресурс не кешируем).
-
-    ```ts
-    type EventData = {
-      type: string;
-      url: string;
-    };
-
-    onOPFSSkipQuotaExceeded(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSBackgroundFetchFailed`** — подписка на уведомление о завершении Background Fetch с ошибкой.
-
-    ```ts
-    type EventData = { type: string; registrationId?: string };
-    onOPFSBackgroundFetchFailed(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-- **`onOPFSBackgroundFetchAborted`** — подписка на уведомление об отмене Background Fetch.
-
-    ```ts
-    type EventData = { type: string; registrationId?: string };
-    onOPFSBackgroundFetchAborted(handler: (event: MessageEvent<EventData>) => void): Unsubscribe
-    ```
-
-### Утилиты управления кэшем
-
-Функции для получения списка закешированных ресурсов, проверки по URL и удаления по URL. Вызываются на клиенте (страница); нужны, когда надо показать пользователю, что в кэше, и дать удалить выбранное.
-
-- **`listOpfsCachedResources`** — возвращает список закешированных ресурсов.
-
-    ```ts
-    interface OpfsCachedResource {
-      url: string;
-      size: number;
-      type: string | undefined;
-      lastModified: string | undefined;
-    }
-
-    listOpfsCachedResources(): Promise<OpfsCachedResource[]>
-    ```
-
-- **`hasInOpfsCache`** — проверяет наличие URL в кеше.
-
-    ```ts
-    hasInOpfsCache(url: string): Promise<boolean>
-    ```
-
-- **`deleteFromOpfsCache`** — удаляет ресурс по URL из кеша.
-
-    ```ts
-    deleteFromOpfsCache(url: string): Promise<void>
-    ```
-
-Типы `OpfsMessagePayload` и `OpfsCachedResource` экспортируются из пакета. Константы типов сообщений (имя совпадает со строковым значением в `event.data.type`): `OPFS_MSG_QUOTA_EXCEEDED`, `OPFS_MSG_WRITE_SKIPPED_SIZE`, `OPFS_MSG_CACHE_LIMIT_REACHED`, `OPFS_MSG_EVICTION_COMPLETED`, `OPFS_MSG_WRITE_FAILED`, `OPFS_MSG_SKIP_QUOTA_EXCEEDED`, `OPFS_MSG_BACKGROUND_FETCH_FAILED`, `OPFS_MSG_BACKGROUND_FETCH_ABORTED`.
-
-### Оповещения вкладок о квоте и лимитах
-
-Пример: подписаться на события и показать пользователю, какой ресурс не удалось закешировать; при размонтировании компонента — отписаться.
-
-```typescript
-import {
-    onOPFSQuotaExceeded,
-    onOPFSSkipQuotaExceeded,
-    type OpfsMessagePayload,
-} from '@budarin/psw-plugin-opfs-serve-range/client';
-
-const unsubQuota = onOPFSQuotaExceeded((event: MessageEvent) => {
-    const data = event.data as { type: string } & OpfsMessagePayload;
-    console.warn('OPFS: квота исчерпана', data.url);
-    // например: showToast(`Не удалось сохранить: ${data.url}`);
-});
-
-const unsubSkip = onOPFSSkipQuotaExceeded((event: MessageEvent) => {
-    const data = event.data as { type: string } & OpfsMessagePayload;
-    console.warn('OPFS: ресурс не кешируется (лимит)', data.url);
-});
-
-// когда подписка не нужна:
-// unsubQuota(); unsubSkip();
-```
-
-В каких ситуациях шлются сообщения — [opfs-cache-behavior.ru.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
-
-### Очистка кеша и управление отдельными ресурсами
-
-Когда нужно сбросить весь кеш (например, по кнопке в UI или при логауте), можно вызвать **clearOpfsCache()** из сервис-воркера или клиента — будет удалена вся папка кеша.
-
-Если нужно работать с отдельными ресурсами (показать пользователю список сохранённых файлов и дать удалить что-то выборочно), используйте клиентские утилиты из entry point `@budarin/psw-plugin-opfs-serve-range/client`: `listOpfsCachedResources`, `hasInOpfsCache`, `deleteFromOpfsCache` (см. выше). Список в кеше строится по метаданным в футере (там хранится исходный url каждого ресурса).
-
-## Спецификации плагинов
-
-Общая настройка кеша (имя папки, доля квоты) задаётся в **configureOpfs({ folderName, maxCacheFraction })**. Ниже — плагины пакета и их опции.
-
-- **`opfsServeRange`** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов.
-
-    ```ts
-    opfsServeRange(options?: {
-      order?: number;
-      enableLogging?: boolean;
-      include?: string[];
-      exclude?: string[];
-      rangeResponseCacheControl?: string; // Cache-Control для ответов 206 (по умолчанию max-age=31536000, immutable)
-    }): Plugin | undefined
-    ```
-
-- **`opfsRangeFromNetworkAndCache`** — обрабатывает запросы, которые opfsServeRange не обслужил (ресурс ещё не в кеше): идёт в сеть, отдаёт ответ клиенту и при необходимости догружает файл в OPFS в фоне.
-
-    ```ts
-    opfsRangeFromNetworkAndCache(options?: {
-      order?: number;
-      include?: string[];
-      exclude?: string[];
-      enableLogging?: boolean;
-      pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
-    }): Plugin | undefined
-    ```
-
-- **`opfsBackgroundFetch`** — при успешном завершении загрузки через Background Fetch API записывает ответы в OPFS; дальнейшие range‑запросы по этим URL обслуживает opfsServeRange.
-
-    ```ts
-    opfsBackgroundFetch(options?: {
-      order?: number;
-      include?: string[];
-      exclude?: string[];
-      enableLogging?: boolean;
-      pinned?: string[]; // glob-паттерны URL, защищённых от эвикции
-    }): Plugin | undefined
-    ```
-
-Запуск загрузки с клиента: утилиты из `@budarin/pluggable-serviceworker/client/background-fetch`.
-
-### Закреплённые ресурсы (защита от эвикции)
-
-Оба плагина, записывающие в OPFS (`opfsRangeFromNetworkAndCache`, `opfsBackgroundFetch`), поддерживают опцию `pinned`: массив glob-паттернов для URL, которые никогда не должны удаляться алгоритмом LRU-эвикции. Ресурсы, соответствующие этим паттернам, сохраняются с `evictable: false` в метаданных и не будут удалены даже при достижении лимита кеша.
-
-Пример: пометить важные медиафайлы как закреплённые, чтобы они не эвиктились, остальные закешированные медиа могут удаляться:
-
-```typescript
-opfsRangeFromNetworkAndCache({
-    include: ['*.mp4', '*.webm'],
-    pinned: ['/assets/media/featured/**'], // важные медиафайлы не будут эвиктиться
-});
-```
-
-По умолчанию все ресурсы эвиктабельны (`evictable: true`). Только ресурсы, соответствующие паттернам в `pinned`, защищены от эвикции.
+---
 
 ## Требования
 
-- Браузер с поддержкой OPFS (Chrome 108+, Edge 108+, Firefox 111+, Safari 16.4+) и secure context (HTTPS).
+Нужен браузер с поддержкой OPFS (Chrome 108+, Edge 108+, Firefox 111+, Safari 16.4+) и безопасный контекст (страница по HTTPS).
+
+---
 
 ## Лицензия
 

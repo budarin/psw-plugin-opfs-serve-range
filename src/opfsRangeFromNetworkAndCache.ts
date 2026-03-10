@@ -11,17 +11,22 @@ import { getOpfsDir, getRoot } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import {
     parseRangeHeader,
-    build206Response,
     build206ResponseFromStream,
     createRangeExtractTransform,
 } from './opfsRangeUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { isBlocklisted } from './opfsLru.js';
-import { OPFS_MSG_SKIP_QUOTA_EXCEEDED } from './opfsMessages.js';
+import {
+    OPFS_MSG_SKIP_QUOTA_EXCEEDED,
+    OPFS_MSG_RANGE_CACHE_FETCH_STARTED,
+    OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE,
+} from './opfsMessages.js';
 
 /** URL, по которым уже идёт фоновая полная загрузка в OPFS. */
 const loadingUrls = new Set<string>();
+/** Число активных фоновых загрузок в кеш (для оповещения клиента STARTED/ALL_DONE). */
+let activeRangeCacheFetchCount = 0;
 
 export interface OpfsRangeFromNetworkAndCacheOptions {
     /**
@@ -107,6 +112,10 @@ async function backgroundFullFetchToOpfs(
         }
     } finally {
         loadingUrls.delete(url);
+        activeRangeCacheFetchCount -= 1;
+        if (activeRangeCacheFetchCount === 0) {
+            notifyClients(OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE, {});
+        }
     }
 }
 
@@ -220,6 +229,8 @@ export function opfsRangeFromNetworkAndCache(
                 if (response.status === 206) {
                     if (!loadingUrls.has(url)) {
                         loadingUrls.add(url);
+                        activeRangeCacheFetchCount += 1;
+                        notifyClients(OPFS_MSG_RANGE_CACHE_FETCH_STARTED, { url });
                         backgroundFullFetchToOpfs(url, logger, enableLogging, context.fetchPassthrough, pinned);
                     }
                     return new Response(response.body, {
@@ -283,15 +294,8 @@ export function opfsRangeFromNetworkAndCache(
                         );
                     }
 
-                    const blob = await response.blob();
-                    const size = blob.size;
-                    const range = parseRangeHeader(rangeHeader, size);
-                    const rangeBlob = blob.slice(range.start, range.end + 1);
-                    return build206Response(rangeBlob, range, size, {
-                        type,
-                        ...(etag && { etag }),
-                        ...(lastModified && { lastModified }),
-                    });
+                    // 200 без валидного Content-Length: не буферизуем (риск OOM), пробрасываем ответ клиенту
+                    return response;
                 }
 
                 return response;
