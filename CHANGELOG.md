@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.0 - 2026-03-11
+
+- **Renamed:** **StartDownloadAssetsToOpfsOptions.downloadTotal** → **totalDownloadSizeInBytes**. Same meaning (total size of the download in bytes, for progress display); clearer name. Update call sites and options objects.
+- **Docs:** README and README.ru — removed inline type comments; added proper TypeScript interface blocks below the relevant sections: handler and **OpfsMessagePayload** for subscription functions; **DownloadAssetsToOpfsResult** and reject type for startDownloadAssetsToOpfs; **OpfsCachedResource** for listOpfsCachedResources; **FolderCacheConfig** for registerFolderConfig; **OpfsMetadata** and **WriteToOpfsOptions** for the custom plugin section. getBackgroundFetchFilter and utility-section behavior notes moved from comments to prose.
+
 ## 3.2.0 - 2026-03-11
 
 - **Range cache:** LRU eviction is O(1) (doubly linked list). Each entry stores only the response **blob**; metadata (fullSize, type, etag, lastModified) for building the 206 response is taken from the **metadata cache**. **get(key, start, end)** returns **RangeCacheBlobHit** (`{ blob }`). **set(key, start, end, blob)** no longer takes a meta argument. Exported type **RangeCacheBlobHit**.
