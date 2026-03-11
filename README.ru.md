@@ -112,14 +112,14 @@ import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/
 async function downloadForOffline(
     assets: string[],
     title: string,
-    downloadTotal?: number
+    totalDownloadSizeInBytes?: number
 ) {
     try {
         const result = await startDownloadAssetsToOpfs({
             folderName: 'video-cache',
             assets,
             title,
-            downloadTotal,
+            totalDownloadSizeInBytes,
             onProgress: (downloaded, total) =>
                 console.log(`${downloaded}/${total}`),
             signal: myAbortController.signal,
@@ -321,12 +321,19 @@ filterAssetsForOpfs(
 
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
-    folderName: string;  // обязательно; тот же, что в opfsBackgroundFetch
+    /** Имя папки в OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
+    folderName: string;
+    /** Pathname'ы ресурсов для загрузки. Фильтруются по include/exclude со стороны SW. */
     assets: string[];
+    /** Заголовок для системного UI Background Fetch (например, уведомление на Android). */
     title?: string;
-    downloadTotal?: number;
+    /** Суммарный размер загрузки в байтах (всех assets). Опционально; только для прогресса (onProgress и системный UI показывают «X из Y» или %). */
+    totalDownloadSizeInBytes?: number;
+    /** Колбек прогресса: (скачано байт, всего байт). Вызывается при каждом progress Background Fetch. */
     onProgress?: (downloaded: number, total: number) => void;
+    /** Колбек после записи каждого файла в OPFS: (уже записанные pathname'ы, общее число файлов). */
     onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
+    /** AbortSignal для отмены. При abort промис отклоняется с reason: 'abort'. */
     signal?: AbortSignal;
 }
 startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>

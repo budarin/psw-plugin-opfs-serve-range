@@ -26,7 +26,7 @@ let capturedId: string | null = null;
 const fakeBfReg = {
     addEventListener: vi.fn(),
     downloaded: 0,
-    downloadTotal: 100,
+    downloadTotal: 100, // свойство BackgroundFetchRegistration (браузерный API)
 };
 
 vi.mock('@budarin/pluggable-serviceworker/client/background-fetch', () => ({

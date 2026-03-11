@@ -327,19 +327,23 @@ export interface DownloadAssetsToOpfsRejected {
 
 /** Опции для startDownloadAssetsToOpfs. */
 export interface StartDownloadAssetsToOpfsOptions {
-    /** Имя папки OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
+    /** Имя папки в OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
     folderName: string;
-    /** Assets (pathname'ы). Фильтр include/exclude запрашивается у SW. */
+    /** Список pathname'ов ресурсов для загрузки. Фильтр include/exclude запрашивается у SW. */
     assets: string[];
-    /** Заголовок для UI Background Fetch. */
+    /** Заголовок для системного UI Background Fetch (например, уведомление на Android). */
     title?: string;
-    /** Ожидаемый суммарный размер (байты) для отображения прогресса. */
-    downloadTotal?: number;
-    /** Колбек прогресса по байтам (downloaded, total). */
+    /**
+     * Суммарный размер загрузки в байтах (всех assets в этой пачке).
+     * Опционально. Нужен только для отображения прогресса: в onProgress второй аргумент total
+     * и системный UI смогут показать «X из Y байт» или процент. Без него total будет 0.
+     */
+    totalDownloadSizeInBytes?: number;
+    /** Колбек прогресса: (уже скачано байт, всего байт). Вызывается при каждом progress Background Fetch. */
     onProgress?: (downloaded: number, total: number) => void;
-    /** Колбек после записи каждого файла в OPFS (loadedAssets, totalCount). */
+    /** Колбек после записи каждого файла в OPFS: (уже записанные pathname'ы, общее число файлов). */
     onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
-    /** При abort отписки снимаются, промис отклоняется с reason: 'abort'. */
+    /** AbortSignal для отмены. При abort отписки снимаются, промис отклоняется с reason: 'abort'. */
     signal?: AbortSignal;
 }
 
@@ -351,7 +355,7 @@ export interface StartDownloadAssetsToOpfsOptions {
 export function startDownloadAssetsToOpfs(
     options: StartDownloadAssetsToOpfsOptions
 ): Promise<DownloadAssetsToOpfsResult> {
-    const { folderName, assets, title, downloadTotal, onProgress, onFileWritten, signal } = options;
+    const { folderName, assets, title, totalDownloadSizeInBytes, onProgress, onFileWritten, signal } = options;
     const filteredOut: string[] = [];
 
     return getBackgroundFetchFilter().then(async (filter) => {
@@ -373,13 +377,13 @@ export function startDownloadAssetsToOpfs(
 
         const runOptions: {
             title?: string;
-            downloadTotal?: number;
+            totalDownloadSizeInBytes?: number;
             onProgress?: (downloaded: number, total: number) => void;
             onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
             signal?: AbortSignal;
         } = {};
         if (title !== undefined) runOptions.title = title;
-        if (downloadTotal !== undefined) runOptions.downloadTotal = downloadTotal;
+        if (totalDownloadSizeInBytes !== undefined) runOptions.totalDownloadSizeInBytes = totalDownloadSizeInBytes;
         if (onProgress !== undefined) runOptions.onProgress = onProgress;
         if (onFileWritten !== undefined) runOptions.onFileWritten = onFileWritten;
         if (signal !== undefined) runOptions.signal = signal;
@@ -437,14 +441,14 @@ function runBackgroundFetch(
     filteredOut: string[],
     options: {
         title?: string;
-        downloadTotal?: number;
+        totalDownloadSizeInBytes?: number;
         onProgress?: (downloaded: number, total: number) => void;
         onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
         signal?: AbortSignal;
     },
     runOptions?: { attachOnly?: boolean }
 ): Promise<DownloadAssetsToOpfsResult> {
-    const { title, downloadTotal, onProgress, onFileWritten, signal } = options;
+    const { title, totalDownloadSizeInBytes, onProgress, onFileWritten, signal } = options;
     const attachOnly = runOptions?.attachOnly === true;
     const origin = typeof location !== 'undefined' ? location.origin : 'https://example.com';
     const urls = assetsToUse.map((p) => new URL(p, origin).href);
@@ -536,7 +540,10 @@ function runBackgroundFetch(
             })
             .then((reg) => {
                 if (!reg) return;
-                return startBackgroundFetch(reg as ServiceWorkerRegistration, id, urls, { title, downloadTotal }).then(
+                return startBackgroundFetch(reg as ServiceWorkerRegistration, id, urls, {
+                    title,
+                    downloadTotal: totalDownloadSizeInBytes,
+                }).then(
                     (bfReg: unknown) => {
                         if (
                             bfReg &&

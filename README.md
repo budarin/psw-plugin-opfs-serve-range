@@ -68,7 +68,7 @@ initServiceWorker(
 );
 ```
 
-## Plugins that use the **same** cache (same folder) must use the same **folderName** and consistent options. On the page, use `startDownloadAssetsToOpfs({ folderName, assets, title })` to start a download; when it finishes, those URLs are served from cache. See [Download for offline](#download-for-offline-background-fetch) for the client API
+Plugins that use the **same** cache (same folder) must use the same **folderName** and consistent options. On the page, use `startDownloadAssetsToOpfs({ folderName, assets, title })` to start a download; when it finishes, those URLs are served from cache. See [Download for offline](#download-for-offline-background-fetch) for the client API
 
 ## Usage scenarios
 
@@ -118,14 +118,14 @@ import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/
 async function downloadForOffline(
     assets: string[],
     title: string,
-    downloadTotal?: number
+    totalDownloadSizeInBytes?: number
 ) {
     try {
         const result = await startDownloadAssetsToOpfs({
             folderName: 'video-cache',
             assets,
             title,
-            downloadTotal,
+            totalDownloadSizeInBytes,
             onProgress: (downloaded, total) =>
                 console.log(`${downloaded}/${total}`),
             signal: myAbortController.signal,
@@ -327,12 +327,19 @@ filterAssetsForOpfs(
 
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
-    folderName: string;  // required; same as in opfsBackgroundFetch
+    /** OPFS folder name (required). Must match folderName in opfsBackgroundFetch. */
+    folderName: string;
+    /** Pathnames of resources to download. Filtered by include/exclude from SW. */
     assets: string[];
+    /** Title for the system Background Fetch UI (e.g. Android notification). */
     title?: string;
-    downloadTotal?: number;
+    /** Total size of the download in bytes (all assets). Optional; used only for progress (onProgress and system UI show "X of Y bytes" or %). */
+    totalDownloadSizeInBytes?: number;
+    /** Progress callback: (downloadedBytes, totalBytes). Fired on each Background Fetch progress. */
     onProgress?: (downloaded: number, total: number) => void;
+    /** Callback after each file is written to OPFS: (loadedPathnames, totalFileCount). */
     onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
+    /** AbortSignal to cancel. On abort, promise rejects with reason: 'abort'. */
     signal?: AbortSignal;
 }
 startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
@@ -459,7 +466,9 @@ const root = await getRoot();
 const dir = await getOpfsDir(root, true, 'my-cache');
 const key = await urlToOpfsKey(url);
 const metadata = metadataFromResponse(response, url);
-await writeToOpfs(dir, key, response.body, metadata, { folderName: 'my-cache' });
+await writeToOpfs(dir, key, response.body, metadata, {
+    folderName: 'my-cache',
+});
 ```
 
 The response may omit `Content-Length` — size is determined by counting bytes in the body when writing. For cache limits to apply (space check before write, eviction, notifications, and skip list), pass the fifth argument `options` to `writeToOpfs` with `url` and `knownSize`.
