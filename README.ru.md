@@ -205,18 +205,28 @@ createOpfsServeAndNetworkCachePlugins(options: {
 
 ```ts
 normalizePatternList(patterns: string[] | undefined, baseOrigin: string): { list: string[] | undefined; dropped: NormalizePatternListDropped }
-// При инициализации: полные URL → pathname; cross-origin/невалидные попадают в dropped. Варнинги выводятся фабриками плагинов через logger (по умолчанию console).
 emitDroppedPatternWarnings(dropped: NormalizePatternListDropped, logger: { warn?: (message: string) => void }): void
 getRoot(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 clearOpfsCache(folderName: string): Promise<void>
 registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
-// FolderCacheConfig: { maxCacheFraction?: number; rangeCacheMaxSizeBytes?: number; rangeCacheMaxEntries?: number }
-getGlobalMaxCacheFraction(): number   // по умолчанию 0.5
-setGlobalMaxCacheFraction(fraction: number): void   // (0, 1], throw при неверном значении
+getGlobalMaxCacheFraction(): number
+setGlobalMaxCacheFraction(fraction: number): void
 getMaxCacheFraction(folderName: string): number
 getRangeCacheMaxSizeBytes(folderName: string): number
 getRangeCacheMaxEntries(folderName: string): number
+```
+
+При инициализации полные URL приводятся к pathname; cross-origin и невалидные попадают в `dropped`. Фабрики плагинов выводят предупреждения через logger (по умолчанию console). **getGlobalMaxCacheFraction** по умолчанию 0.5; **setGlobalMaxCacheFraction** ожидает (0, 1], при неверном значении — throw.
+
+**FolderCacheConfig** (для `registerFolderConfig`):
+
+```ts
+interface FolderCacheConfig {
+    maxCacheFraction?: number;
+    rangeCacheMaxSizeBytes?: number;
+    rangeCacheMaxEntries?: number;
+}
 ```
 
 | Плагин                           | Назначение                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -302,8 +312,9 @@ Entry point: `@budarin/psw-plugin-opfs-serve-range/client`. React-хук: `@buda
 
 ```ts
 getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
-// Резолвится фильтром от SW (opfsBackgroundFetchFilter или opfsBackgroundFetch). Пустой объект при таймауте или отсутствии SW.
 ```
+
+Резолвится фильтром от SW (opfsBackgroundFetchFilter или opfsBackgroundFetch). Пустой объект при таймауте или отсутствии ответа от SW.
 
 **filterAssetsForOpfs(assets, include?, exclude?)**
 
@@ -337,9 +348,21 @@ interface StartDownloadAssetsToOpfsOptions {
     signal?: AbortSignal;
 }
 startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
-// Resolve: { registrationId: string; assets?: string[]; written?; failedOrSkipped?; filteredOut? }
-// Reject: DownloadAssetsToOpfsRejected | Error
 ```
+
+Тип результата **DownloadAssetsToOpfsResult**:
+
+```ts
+interface DownloadAssetsToOpfsResult {
+    registrationId: string;
+    assets?: string[];
+    written?: string[];
+    failedOrSkipped?: string[];
+    filteredOut?: string[];
+}
+```
+
+При reject: **DownloadAssetsToOpfsRejected** `{ registrationId: string; reason: 'fail' | 'abort' }` или **Error**.
 
 - **useDownloadAssetsToOpfs()** — React-хук. Возвращает функцию запуска загрузки, статус, прогресс по байтам и по файлам, ошибку, результат и функцию сброса. При размонтировании загрузка не отменяется; отменить можно только вызовом reset(). При повторном нажатии «Скачать» с тем же набором файлов происходит подписка на уже идущую загрузку (attach), дубликат не создаётся. Требуется установленный React (peer dependency).
 
@@ -364,7 +387,6 @@ useDownloadAssetsToOpfs(): {
 Каждая функция принимает обработчик и возвращает функцию для отписки. В каком случае сервис-воркер отправляет то или иное сообщение, описано в [описании поведения кеша](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
 ```ts
-// Все: (handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void) => () => void
 onOPFSQuotaExceeded(handler): () => void
 onOPFSWriteSkipped(handler): () => void
 onOPFSCacheLimitReached(handler): () => void
@@ -377,8 +399,29 @@ onOPFSBackgroundFetchCompleted(handler): () => void
 onOPFSBackgroundFetchFileWritten(handler): () => void
 onOPFSRangeCacheFetchStarted(handler): () => void
 onOPFSRangeCacheFetchAllDone(handler): () => void
-// OpfsMessagePayload: { url?, size?, limit?, reason?, registrationId?, assets?, written?, failedOrSkipped?, asset?, loadedAssets?, totalCount? }
 ```
+
+Каждая функция принимает обработчик и возвращает функцию отписки. Тип handler и payload (экспортируются из пакета):
+
+```ts
+type OpfsMessageHandler = (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void;
+
+interface OpfsMessagePayload {
+    url?: string;
+    size?: number;
+    limit?: number;
+    reason?: string;
+    registrationId?: string;
+    assets?: string[];
+    written?: string[];
+    failedOrSkipped?: string[];
+    asset?: string;
+    loadedAssets?: string[];
+    totalCount?: number;
+}
+```
+
+Какие поля есть в `event.data`, зависит от типа сообщения (см. список ниже и [описание поведения кеша](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)).
 
 **Список отменённых (skip list):** при потоковой записи в OPFS может произойти превышение квоты (QuotaExceeded). Если к моменту ошибки файл оказался не меньше всего кеша, вытеснять старые файлы бесполезно — места всё равно не хватит. Такой URL заносят в список отменённых (в памяти сервис-воркера на время его жизни). При следующих запросах к этому адресу плагин не пытается кешировать ответ и отправляет **onOPFSSkipQuotaExceeded**, чтобы клиент мог показать предупреждение.
 
@@ -404,7 +447,17 @@ onOPFSRangeCacheFetchAllDone(handler): () => void
 
 ```ts
 listOpfsCachedResources(folderName: string): Promise<OpfsCachedResource[]>
-// OpfsCachedResource: { url: string; size: number; type?: string; lastModified?: string }
+```
+
+**OpfsCachedResource** (экспортируется из пакета):
+
+```ts
+interface OpfsCachedResource {
+    url: string;
+    size: number;
+    type: string | undefined;
+    lastModified: string | undefined;
+}
 ```
 
 **hasInOpfsCache(url, folderName)**
@@ -437,14 +490,38 @@ deleteFromOpfsCache(url: string, folderName: string): Promise<void>
 getRoot(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 urlToOpfsKey(url: string): Promise<string>
-metadataFromResponse(response: Response, url: string): OpfsMetadata  // size из Content-Length или 0
+metadataFromResponse(response: Response, url: string): OpfsMetadata
 writeToOpfs(
   dir: FileSystemDirectoryHandle,
   key: string,
   bodyStream: ReadableStream<Uint8Array>,
   metadata: OpfsMetadata,
-  options: WriteToOpfsOptions  // { folderName: string; url?; knownSize? }
+  options: WriteToOpfsOptions
 ): Promise<void>
+```
+
+**OpfsMetadata** (возвращается из `metadataFromResponse`; `size` — из Content-Length или 0):
+
+```ts
+interface OpfsMetadata {
+    url: string;
+    size: number;
+    type?: string;
+    etag?: string;
+    lastModified?: string;
+    lastAccessed?: number;
+    evictable?: boolean;
+}
+```
+
+**WriteToOpfsOptions** (пятый аргумент `writeToOpfs`; нужен для лимитов кеша, эвикции и skip list):
+
+```ts
+interface WriteToOpfsOptions {
+    folderName: string;
+    url?: string;
+    knownSize?: number;
+}
 ```
 
 ```typescript

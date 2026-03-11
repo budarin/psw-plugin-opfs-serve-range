@@ -211,18 +211,28 @@ In environments where OPFS is not available, plugin factories return undefined.
 
 ```ts
 normalizePatternList(patterns: string[] | undefined, baseOrigin: string): { list: string[] | undefined; dropped: NormalizePatternListDropped }
-// At init: full URLs → pathname; cross-origin/invalid go to dropped. Warnings are emitted by plugin factories via logger (default: console).
 emitDroppedPatternWarnings(dropped: NormalizePatternListDropped, logger: { warn?: (message: string) => void }): void
 getRoot(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 clearOpfsCache(folderName: string): Promise<void>
 registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
-// FolderCacheConfig: { maxCacheFraction?: number; rangeCacheMaxSizeBytes?: number; rangeCacheMaxEntries?: number }
-getGlobalMaxCacheFraction(): number   // default 0.5
-setGlobalMaxCacheFraction(fraction: number): void   // (0, 1], throws if invalid
+getGlobalMaxCacheFraction(): number
+setGlobalMaxCacheFraction(fraction: number): void
 getMaxCacheFraction(folderName: string): number
 getRangeCacheMaxSizeBytes(folderName: string): number
 getRangeCacheMaxEntries(folderName: string): number
+```
+
+At init, full URLs are normalized to pathname; cross-origin or invalid go to `dropped`. Plugin factories emit warnings via logger (default: console). **getGlobalMaxCacheFraction** default is 0.5; **setGlobalMaxCacheFraction** expects (0, 1], throws if invalid.
+
+**FolderCacheConfig** (for `registerFolderConfig`):
+
+```ts
+interface FolderCacheConfig {
+    maxCacheFraction?: number;
+    rangeCacheMaxSizeBytes?: number;
+    rangeCacheMaxEntries?: number;
+}
 ```
 
 | Plugin                           | Purpose                                                                                                                                                                                                                                                                                                                                                          |
@@ -308,8 +318,9 @@ For startDownloadAssetsToOpfs to work as intended, the service worker must regis
 
 ```ts
 getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
-// Resolves with filter from SW (opfsBackgroundFetchFilter or opfsBackgroundFetch). Empty object on timeout or no SW.
 ```
+
+Resolves with the filter from SW (opfsBackgroundFetchFilter or opfsBackgroundFetch). Empty object on timeout or when no SW responds.
 
 **filterAssetsForOpfs(assets, include?, exclude?)**
 
@@ -343,9 +354,21 @@ interface StartDownloadAssetsToOpfsOptions {
     signal?: AbortSignal;
 }
 startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
-// Resolve: { registrationId: string; assets?: string[]; written?; failedOrSkipped?; filteredOut? }
-// Reject: DownloadAssetsToOpfsRejected | Error
 ```
+
+Resolve type **DownloadAssetsToOpfsResult**:
+
+```ts
+interface DownloadAssetsToOpfsResult {
+    registrationId: string;
+    assets?: string[];
+    written?: string[];
+    failedOrSkipped?: string[];
+    filteredOut?: string[];
+}
+```
+
+Reject: **DownloadAssetsToOpfsRejected** `{ registrationId: string; reason: 'fail' | 'abort' }` or **Error**.
 
 - **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, error, result, and a reset function. The download is not cancelled on unmount; cancel only via reset(). If the user clicks "Download" again with the same set of files, the call attaches to the existing download (no duplicate). Requires React as a peer dependency.
 
@@ -370,7 +393,6 @@ If you are not using startDownloadAssetsToOpfs or the hook and want to wire the 
 Each function takes a handler and returns a function to unsubscribe. When each type of message is sent is described in [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md).
 
 ```ts
-// All: (handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void) => () => void
 onOPFSQuotaExceeded(handler): () => void
 onOPFSWriteSkipped(handler): () => void
 onOPFSCacheLimitReached(handler): () => void
@@ -383,8 +405,29 @@ onOPFSBackgroundFetchCompleted(handler): () => void
 onOPFSBackgroundFetchFileWritten(handler): () => void
 onOPFSRangeCacheFetchStarted(handler): () => void
 onOPFSRangeCacheFetchAllDone(handler): () => void
-// OpfsMessagePayload: { url?, size?, limit?, reason?, registrationId?, assets?, written?, failedOrSkipped?, asset?, loadedAssets?, totalCount? }
 ```
+
+Each function accepts a handler and returns an unsubscribe function. Handler type and payload (exported from the package):
+
+```ts
+type OpfsMessageHandler = (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void;
+
+interface OpfsMessagePayload {
+    url?: string;
+    size?: number;
+    limit?: number;
+    reason?: string;
+    registrationId?: string;
+    assets?: string[];
+    written?: string[];
+    failedOrSkipped?: string[];
+    asset?: string;
+    loadedAssets?: string[];
+    totalCount?: number;
+}
+```
+
+Which fields appear in `event.data` depends on the message type (see list below and [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md)).
 
 **Skip list:** When streaming a write to OPFS, the browser may throw QuotaExceeded. If by then we have already written as many bytes as the whole cache size, evicting old files will not free enough space. That URL is added to the skip list (kept in the service worker’s memory for its lifetime). On later requests for that URL, the plugin does not attempt to cache again and sends **onOPFSSkipQuotaExceeded** so the client can show a warning.
 
@@ -410,7 +453,17 @@ These functions are called from the page. **folderName** must match the name use
 
 ```ts
 listOpfsCachedResources(folderName: string): Promise<OpfsCachedResource[]>
-// OpfsCachedResource: { url: string; size: number; type?: string; lastModified?: string }
+```
+
+**OpfsCachedResource** (exported):
+
+```ts
+interface OpfsCachedResource {
+    url: string;
+    size: number;
+    type: string | undefined;
+    lastModified: string | undefined;
+}
 ```
 
 **hasInOpfsCache(url, folderName)**
@@ -443,14 +496,38 @@ To write to OPFS with your own logic using the same format:
 getRoot(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 urlToOpfsKey(url: string): Promise<string>
-metadataFromResponse(response: Response, url: string): OpfsMetadata  // size from Content-Length or 0
+metadataFromResponse(response: Response, url: string): OpfsMetadata
 writeToOpfs(
   dir: FileSystemDirectoryHandle,
   key: string,
   bodyStream: ReadableStream<Uint8Array>,
   metadata: OpfsMetadata,
-  options: WriteToOpfsOptions  // { folderName: string; url?; knownSize? }
+  options: WriteToOpfsOptions
 ): Promise<void>
+```
+
+**OpfsMetadata** (returned by `metadataFromResponse`; `size` from Content-Length or 0):
+
+```ts
+interface OpfsMetadata {
+    url: string;
+    size: number;
+    type?: string;
+    etag?: string;
+    lastModified?: string;
+    lastAccessed?: number;
+    evictable?: boolean;
+}
+```
+
+**WriteToOpfsOptions** (fifth argument to `writeToOpfs`; required for cache limits, eviction, and skip list):
+
+```ts
+interface WriteToOpfsOptions {
+    folderName: string;
+    url?: string;
+    knownSize?: number;
+}
 ```
 
 ```typescript
