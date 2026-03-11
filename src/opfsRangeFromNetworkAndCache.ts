@@ -7,7 +7,13 @@
 import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
-import { getOpfsDir, getRoot } from './opfsUtil.js';
+import {
+    emitDroppedPatternWarnings,
+    getOpfsDir,
+    getRoot,
+    normalizePatternList,
+    registerFolderConfig,
+} from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import {
     parseRangeHeader,
@@ -30,13 +36,17 @@ let activeRangeCacheFetchCount = 0;
 
 export interface OpfsRangeFromNetworkAndCacheOptions {
     /**
+     * Имя папки в OPFS для этого кеша (обязательно). Должно совпадать с folderName в opfsServeRange/opfsBackgroundFetch, если они обслуживают тот же кеш.
+     */
+    folderName: string;
+    /**
      * Порядок: должен быть после opfsServeRange (например -10).
      */
     order?: number;
     /**
-     * Маски URL для кеширования (glob по pathname).
+     * Маски URL для кеширования (glob/pathname). Обязательно, непустой массив.
      */
-    include?: string[];
+    include: string[];
     /**
      * Маски URL для исключения.
      */
@@ -46,9 +56,18 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
      */
     enableLogging?: boolean;
     /**
+     * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude/pinned).
+     * По умолчанию используется console.
+     */
+    logger?: Logger;
+    /**
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
+    /**
+     * Доля квоты origin (0…1) для этой папки. При совместном использовании папки должно совпадать с другими плагинами.
+     */
+    maxCacheFraction?: number;
 }
 
 /**
@@ -56,6 +75,7 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
  */
 async function backgroundFullFetchToOpfs(
     url: string,
+    folderName: string,
     logger: Logger,
     enableLogging: boolean,
     fetchPassthrough: (request: Request) => Promise<Response>,
@@ -93,8 +113,9 @@ async function backgroundFullFetchToOpfs(
         const metadata = { ...baseMetadata, evictable };
         const key = await urlToOpfsKey(url);
         const root = await getRoot();
-        const dir = await getOpfsDir(root, true);
+        const dir = await getOpfsDir(root, true, folderName);
         await writeToOpfs(dir, key, response.body, metadata, {
+            folderName,
             url,
             ...(metadata.size > 0 && { knownSize: metadata.size }),
         });
@@ -120,18 +141,43 @@ async function backgroundFullFetchToOpfs(
 }
 
 export function opfsRangeFromNetworkAndCache(
-    options: OpfsRangeFromNetworkAndCacheOptions = {}
+    options: OpfsRangeFromNetworkAndCacheOptions
 ): Plugin | undefined {
     if (!isOpfsAvailable()) {
         return undefined;
     }
+    const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
     const {
+        folderName,
         order = -10,
         include,
         exclude,
         enableLogging = false,
         pinned,
+        maxCacheFraction,
+        logger = console,
     } = options;
+    if (include == null || !Array.isArray(include) || include.length === 0) {
+        throw new Error('opfs: include is required and must be a non-empty array');
+    }
+    const nInc = normalizePatternList(include, baseOrigin);
+    const nExc = normalizePatternList(exclude, baseOrigin);
+    const nPin = normalizePatternList(pinned, baseOrigin);
+    const normalizedInclude = nInc.list;
+    const normalizedExclude = nExc.list;
+    const normalizedPinned = nPin.list;
+    if (normalizedInclude == null || normalizedInclude.length === 0) {
+        return undefined;
+    }
+    const droppedForLogger = {
+        crossOrigin: [...nInc.dropped.crossOrigin, ...nExc.dropped.crossOrigin, ...nPin.dropped.crossOrigin],
+        invalid: [...nInc.dropped.invalid, ...nExc.dropped.invalid, ...nPin.dropped.invalid],
+    };
+    emitDroppedPatternWarnings(droppedForLogger, logger);
+
+    registerFolderConfig(folderName, {
+        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
+    });
 
     return {
         name: 'opfs-range-from-network-and-cache',
@@ -147,7 +193,7 @@ export function opfsRangeFromNetworkAndCache(
                 return;
             }
 
-            if (!shouldProcessFile(request.url, include, exclude)) {
+            if (!shouldProcessFile(request.url, normalizedInclude, normalizedExclude)) {
                 return;
             }
 
@@ -173,13 +219,14 @@ export function opfsRangeFromNetworkAndCache(
                         });
                     }
                     const baseMetadata = metadataFromResponse(response, url);
-                    const evictable = isEvictable(url, pinned);
+                    const evictable = isEvictable(url, normalizedPinned);
                     const metadata = { ...baseMetadata, evictable };
                     const key = await urlToOpfsKey(url);
                     const root = await getRoot();
-                    const dir = await getOpfsDir(root, true);
+                    const dir = await getOpfsDir(root, true, folderName);
                     const [branch1, branch2] = response.body.tee();
                     writeToOpfs(dir, key, branch2, metadata, {
+                        folderName,
                         url,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
                     }).catch((err) => {
@@ -211,7 +258,7 @@ export function opfsRangeFromNetworkAndCache(
                     try {
                         const key = await urlToOpfsKey(url);
                         const root = await getRoot();
-                        const dir = await getOpfsDir(root, false);
+                        const dir = await getOpfsDir(root, false, folderName);
                         await dir.getFileHandle(key);
                         logger.warn(
                             `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
@@ -231,7 +278,7 @@ export function opfsRangeFromNetworkAndCache(
                         loadingUrls.add(url);
                         activeRangeCacheFetchCount += 1;
                         notifyClients(OPFS_MSG_RANGE_CACHE_FETCH_STARTED, { url });
-                        backgroundFullFetchToOpfs(url, logger, enableLogging, context.fetchPassthrough, pinned);
+                        backgroundFullFetchToOpfs(url, folderName, logger, enableLogging, context.fetchPassthrough, normalizedPinned);
                     }
                     return new Response(response.body, {
                         status: response.status,
@@ -262,13 +309,14 @@ export function opfsRangeFromNetworkAndCache(
                     ) {
                         const range = parseRangeHeader(rangeHeader, fullSize);
                         const baseMetadata = metadataFromResponse(response, url);
-                        const evictable = isEvictable(url, pinned);
+                        const evictable = isEvictable(url, normalizedPinned);
                         const metadata = { ...baseMetadata, evictable };
                         const key = await urlToOpfsKey(url);
                         const root = await getRoot();
-                        const dir = await getOpfsDir(root, true);
+                        const dir = await getOpfsDir(root, true, folderName);
                         const [branch1, branch2] = response.body.tee();
                         writeToOpfs(dir, key, branch2, metadata, {
+                            folderName,
                             url,
                             knownSize: fullSize,
                         }).catch((err) => {

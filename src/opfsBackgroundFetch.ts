@@ -3,9 +3,15 @@
  * записывает ответы в OPFS (range cache). Дальнейшие range-запросы к этим URL обслуживает opfsServeRange.
  */
 
-import type { Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
+import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
-import { getOpfsDir, getRoot } from './opfsUtil.js';
+import {
+    emitDroppedPatternWarnings,
+    getOpfsDir,
+    getRoot,
+    normalizePatternList,
+    registerFolderConfig,
+} from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
@@ -23,13 +29,18 @@ import {
 
 export interface OpfsBackgroundFetchFilterOptions {
     /**
-     * Маски URL (glob по pathname), передаются клиенту по запросу getBackgroundFetchFilter().
+     * Маски URL (glob/pathname). Обязательно, непустой массив. После нормализации может быть пустым — клиенту уйдёт пустой список.
      */
-    include?: string[];
+    include: string[];
     /**
      * Маски URL для исключения.
      */
     exclude?: string[];
+    /**
+     * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude).
+     * По умолчанию используется console.
+     */
+    logger?: Logger;
 }
 
 /**
@@ -37,15 +48,29 @@ export interface OpfsBackgroundFetchFilterOptions {
  * отвечает include/exclude. Независимый — для кастомного SW можно регистрировать один этот плагин.
  * Клиентскому getBackgroundFetchFilter() соответствует именно этот плагин (или вызов его из opfsBackgroundFetch).
  */
-export function opfsBackgroundFetchFilter(
-    options: OpfsBackgroundFetchFilterOptions = {}
-): Plugin {
-    const { include, exclude } = options;
+export function opfsBackgroundFetchFilter(options: OpfsBackgroundFetchFilterOptions): Plugin | undefined {
+    if (options.include == null || !Array.isArray(options.include) || options.include.length === 0) {
+        throw new Error('opfs: include is required and must be a non-empty array');
+    }
+    const { logger = console } = options;
+    const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
+    const inc = normalizePatternList(options.include, baseOrigin);
+    const exc = normalizePatternList(options.exclude, baseOrigin);
+    const include = inc.list;
+    const exclude = exc.list;
+    if (include == null || include.length === 0) {
+        return undefined;
+    }
+    const droppedForLogger = {
+        crossOrigin: [...inc.dropped.crossOrigin, ...exc.dropped.crossOrigin],
+        invalid: [...inc.dropped.invalid, ...exc.dropped.invalid],
+    };
+    emitDroppedPatternWarnings(droppedForLogger, logger);
     return {
         name: 'opfs-background-fetch-filter',
         order: 0,
 
-        message(event, _context): void {
+        message(event): void {
             const data = event.data as { type?: string; requestId?: string } | null;
             if (
                 data?.type !== OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER ||
@@ -69,13 +94,17 @@ export function opfsBackgroundFetchFilter(
 
 export interface OpfsBackgroundFetchOptions {
     /**
+     * Имя папки в OPFS для этого кеша (обязательно). Должно совпадать с folderName в opfsServeRange/opfsRangeFromNetworkAndCache, если они обслуживают тот же кеш.
+     */
+    folderName: string;
+    /**
      * Порядок выполнения (по умолчанию 0).
      */
     order?: number;
     /**
-     * Маски URL для записи в range cache (glob по pathname). Если задано — пишем только совпадения.
+     * Маски URL для записи в range cache (glob/pathname). Обязательно, непустой массив.
      */
-    include?: string[];
+    include: string[];
     /**
      * Маски URL для исключения из записи.
      */
@@ -85,9 +114,18 @@ export interface OpfsBackgroundFetchOptions {
      */
     enableLogging?: boolean;
     /**
+     * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude/pinned).
+     * По умолчанию используется console.
+     */
+    logger?: Logger;
+    /**
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
+    /**
+     * Доля квоты origin (0…1) для этой папки. При совместном использовании папки должно совпадать с другими плагинами.
+     */
+    maxCacheFraction?: number;
 }
 
 /**
@@ -97,15 +135,39 @@ export interface OpfsBackgroundFetchOptions {
  * Требуется Content-Length в ответе для записи. Без include/exclude в success пишет все ответы.
  */
 export function opfsBackgroundFetch(
-    options: OpfsBackgroundFetchOptions = {}
+    options: OpfsBackgroundFetchOptions
 ): Plugin | undefined {
     if (!isOpfsAvailable()) {
         return undefined;
     }
-    const { order = 0, include, exclude, enableLogging = false, pinned } = options;
+    const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
+    const { folderName, order = 0, include, exclude, enableLogging = false, pinned, maxCacheFraction, logger = console } = options;
+    if (include == null || !Array.isArray(include) || include.length === 0) {
+        throw new Error('opfs: include is required and must be a non-empty array');
+    }
+    const nInc = normalizePatternList(include, baseOrigin);
+    const nExc = normalizePatternList(exclude, baseOrigin);
+    const nPin = normalizePatternList(pinned, baseOrigin);
+    const normalizedInclude = nInc.list;
+    const normalizedExclude = nExc.list;
+    const normalizedPinned = nPin.list;
+    if (normalizedInclude == null || normalizedInclude.length === 0) {
+        return undefined;
+    }
+    const droppedForLogger = {
+        crossOrigin: [...nInc.dropped.crossOrigin, ...nExc.dropped.crossOrigin, ...nPin.dropped.crossOrigin],
+        invalid: [...nInc.dropped.invalid, ...nExc.dropped.invalid, ...nPin.dropped.invalid],
+    };
+    emitDroppedPatternWarnings(droppedForLogger, logger);
+
+    registerFolderConfig(folderName, {
+        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
+    });
+
     const filterPlugin = opfsBackgroundFetchFilter({
-        ...(include !== undefined && { include }),
-        ...(exclude !== undefined && { exclude }),
+        include: normalizedInclude,
+        ...(normalizedExclude !== undefined && { exclude: normalizedExclude }),
+        logger,
     });
 
     return {
@@ -113,7 +175,7 @@ export function opfsBackgroundFetch(
         order,
 
         message(event, context): void {
-            filterPlugin.message?.(event, context);
+            filterPlugin?.message?.(event, context);
         },
 
         async backgroundfetchsuccess(event, context: PluginContext): Promise<void> {
@@ -122,7 +184,7 @@ export function opfsBackgroundFetch(
             }
             const logger = context.logger ?? console;
             const root = await getRoot();
-            const dir = await getOpfsDir(root, true);
+            const dir = await getOpfsDir(root, true, folderName);
             const records = await event.registration.matchAll();
             const totalCount = records.length;
             const writtenPathnames: string[] = [];
@@ -139,7 +201,7 @@ export function opfsBackgroundFetch(
             for (const record of records) {
                 const url = record.request.url;
                 const pathname = toPathname(record);
-                if (!shouldProcessFile(url, include, exclude)) {
+                if (!shouldProcessFile(url, normalizedInclude, normalizedExclude)) {
                     failedOrSkippedPathnames.push(pathname);
                     if (enableLogging) {
                         logger.debug(
@@ -171,9 +233,10 @@ export function opfsBackgroundFetch(
                 try {
                     const key = await urlToOpfsKey(url);
                     const baseMetadata = metadataFromResponse(response, url);
-                    const evictable = isEvictable(url, pinned);
+                    const evictable = isEvictable(url, normalizedPinned);
                     const metadata = { ...baseMetadata, evictable };
                     await writeToOpfs(dir, key, response.body, metadata, {
+                        folderName,
                         url,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
                     });

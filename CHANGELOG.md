@@ -1,5 +1,40 @@
 # Changelog
 
+## 3.2.0 - 2026-03-11
+
+- **Range cache:** LRU eviction is O(1) (doubly linked list). Each entry stores only the response **blob**; metadata (fullSize, type, etag, lastModified) for building the 206 response is taken from the **metadata cache**. **get(key, start, end)** returns **RangeCacheBlobHit** (`{ blob }`). **set(key, start, end, blob)** no longer takes a meta argument. Exported type **RangeCacheBlobHit**.
+- **Metadata cache:** In-memory LRU cache of file metadata (fullSize, type, etag?, lastModified?, evictable?) by opfsKey (per folder). Avoids reading the file footer on repeat requests for the same file. Default max 500 entries. When a key is evicted from the metadata cache, all range cache entries for that key are invalidated (**onEvictKey** callback). Invalidated on **removeFromEvictionIndex** and **clearOpfsCache**. Internal (not exported).
+- **lastAccessedUpdateByKey:** Entries for evicted keys are removed when **removeFromEvictionIndex** runs, so the map does not grow unbounded.
+- **Eviction index writes:** Disk writes are throttled to at most once per 5 seconds (**INDEX_WRITE_THROTTLE_MS**). If the index was updated recently, a deferred flush is scheduled (setTimeout 5 s); when it runs, the index is written once under lock. Reduces I/O when many keys are updated (e.g. seeking).
+- **readMetadataFromFileFooter:** Single read of the file tail (4 + **MAX_META_JSON_BYTES** = 3004 bytes, or the whole file if smaller). **MAX_META_JSON_BYTES** increased to 3000. If the stored metadata length exceeds the read tail, a second read is performed for the full JSON so parsing never uses partial data.
+- **getOpfsDir:** Return value is cached per folderName; **clearOpfsCache(folderName)** clears the cached handle so it is not reused after the folder is removed.
+- **Factory helpers:** Internal **buildServeOptions(options, defaultOrder)** used by **createOpfsServeAndBackgroundFetchPlugins** and **createOpfsServeAndNetworkCachePlugins** to build opfsServeRange options; removes duplication.
+- **Docs:** reference.mdc updated (range cache returns blob only, metadata cache, dir cache). opfs-cache-behavior (EN/RU) — new section describing all in-memory caches (range, metadata, dir, eviction index, and auxiliary caches).
+
+## 3.1.0 - 2026-03-11
+
+- **Global cache limit:** **getGlobalMaxCacheFraction()** (default 0.5) and **setGlobalMaxCacheFraction(fraction)**. The sum of effective folder fractions is capped at this value. When the sum of registered per-folder `maxCacheFraction` exceeds the global limit, **getMaxCacheFraction(folderName)** returns a proportionally scaled value so that the sum of effective fractions equals the global limit (no throw; quotas are normalized).
+- **High-level helpers:** **createOpfsServeAndBackgroundFetchPlugins(options)** returns `[opfsServeRange, opfsBackgroundFetch]` with shared folderName, include, exclude, etc. **createOpfsServeAndNetworkCachePlugins(options)** returns `[opfsServeRange, opfsRangeFromNetworkAndCache]` for the “cache on first request” scenario. Use spread in the plugin array: `[...createOpfsServeAndBackgroundFetchPlugins({ folderName, include }), ...]`. One **order** option (default 0): first plugin gets order, second gets order + 1. Types: **CreateOpfsServeAndBackgroundFetchPluginsOptions**, **CreateOpfsServeAndNetworkCachePluginsOptions**.
+- **Tests:** opfsUtil.test.ts for global limit and proportional scaling.
+
+## 3.0.0 - 2026-03-11
+
+**Breaking:** Per-instance folder and config. One folder per cache; multiple plugins can share the same folder with the same config.
+
+- **folderName required:** Each of **opfsServeRange**, **opfsRangeFromNetworkAndCache**, and **opfsBackgroundFetch** now requires **folderName: string** in options. No global default folder.
+- **configureOpfs removed:** Global `configureOpfs()` is removed. Cache settings (maxCacheFraction, rangeCacheMaxSizeBytes, rangeCacheMaxEntries) are passed per plugin and stored in a folder registry. When the same folderName is used by several plugins (e.g. serve + network+cache + BF), the config must match or **registerFolderConfig** throws.
+- **registerFolderConfig:** Called internally by plugin factories. Exported for advanced use. **FolderCacheConfig** type exported.
+- **getOpfsDir(root, create, folderName):** Third argument **folderName** is required.
+- **clearOpfsCache(folderName):** Now requires **folderName: string** (clears only that folder).
+- **getMaxCacheFraction(folderName)**, **getRangeCacheMaxSizeBytes(folderName)**, **getRangeCacheMaxEntries(folderName):** Take **folderName**; return value from registry or default.
+- **getCacheLimit(estimate, folderName)** (opfsLru): Second argument **folderName** required.
+- **ensureSpaceForWrite(dir, size, options):** **options.folderName** required.
+- **writeToOpfs(..., options):** **options.folderName** required.
+- **getOrCreateRangeCache(folderName, limits)**, **getRangeCache(folderName):** Range cache is per folder.
+- **removeFromEvictionIndex(dir, keys, folderName):** Third argument **folderName** for range cache invalidation.
+- **Client API:** **listOpfsCachedResources(folderName)**, **hasInOpfsCache(url, folderName)**, **deleteFromOpfsCache(url, folderName)** — **folderName** required. **startDownloadAssetsToOpfs({ folderName, assets, ... })** — **folderName** required.
+- **Docs:** README, README.ru, reference.mdc, opfs-cache-behavior (EN/RU) updated for per-folder API and examples.
+
 ## 2.3.0 - 2026-03-10
 
 - **opfsServeRange — in-memory range cache:** New option **rangeCache** (`true` or `{ maxSizeBytes?, maxEntries? }`). When set, 206 responses are cached in memory by (opfsKey, start, end); repeated requests for the same range are served from cache without reading OPFS. Limits default to **configureOpfs** values **rangeCacheMaxSizeBytes** (default 5 MB) and **rangeCacheMaxEntries** (default 300); plugin options override. LRU eviction when limits are exceeded. Cache is invalidated when a file is evicted from OPFS and on **clearOpfsCache()**. Useful for maps and documents with many parallel or repeated range requests.

@@ -21,8 +21,8 @@ Detailed cache behavior (limits, LRU, eviction, notifications): [docs/opfs-cache
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Usage scenarios](#usage-scenarios)
-  - [Cache on first request](#cache-on-first-request)
-  - [Download for offline (Background Fetch)](#download-for-offline-background-fetch)
+    - [Cache on first request](#cache-on-first-request)
+    - [Download for offline (Background Fetch)](#download-for-offline-background-fetch)
 - [Reference: Service worker plugins](#reference-service-worker-plugins)
 - [Reference: Client API](#reference-client-api)
 - [OPFS storage format](#opfs-storage-format)
@@ -42,54 +42,41 @@ pnpm add @budarin/psw-plugin-opfs-serve-range
 
 ## Quick start
 
-The simplest case: on the first request for a resource, data is loaded from the network and saved to OPFS. On later requests to the same URL, the response is served from cache without going to the network.
-
-To enable this, register two plugins in the service worker:
+Typical case: the user explicitly chooses what to download (e.g. "Download for offline"). You register **opfsServeRange** (serve byte ranges from OPFS when the file is in cache) and **opfsBackgroundFetch** (write to OPFS when a Background Fetch completes). Use **different folderName** for different caches (e.g. video vs audio).
 
 - **opfsServeRange** — serves requested byte ranges from OPFS when the file is already in cache.
-- **opfsRangeFromNetworkAndCache** — when the file is not in cache, the request goes to the network; the response is streamed to the client immediately, and the file is saved to OPFS in the background when possible.
+- **opfsBackgroundFetch** — when the user starts a download via the Background Fetch API (e.g. from the page with `startDownloadAssetsToOpfs`), completed responses are written to OPFS; later requests are then served from cache by opfsServeRange.
+
+Example with **separate caches** for video and audio (two plugins per folder):
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import {
-    configureOpfs,
-    opfsServeRange,
-    opfsRangeFromNetworkAndCache,
-} from '@budarin/psw-plugin-opfs-serve-range';
-
-configureOpfs({
-    folderName: 'ranges-media-cache',
-    maxCacheFraction: 0.5,
-});
+import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
-        opfsServeRange({
-            order: -15,
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        opfsRangeFromNetworkAndCache({
-            order: -10,
-            include: ['*.mp4', '*.webm'],
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'audio-cache',
+            include: ['*.mp3', '*.m4a'],
         }),
     ],
     { version: '1.0.0' }
 );
 ```
 
-After this setup, requests to URLs in `include` check the OPFS cache first; if the file is not there, the request goes to the network and a successful response is written to cache. You do not need any code on the page for this scenario.
-
-Important: a download started by opfsRangeFromNetworkAndCache is aborted when the tab is closed or the network fails. To show whether such a background cache fetch is in progress, the page can subscribe to **onOPFSRangeCacheFetchStarted** and **onOPFSRangeCacheFetchAllDone** (to turn the indicator on and off). If you need a download that continues after the tab is closed, use the [Download for offline](#download-for-offline-background-fetch) scenario.
-
----
+## Plugins that use the **same** cache (same folder) must use the same **folderName** and consistent options. On the page, use `startDownloadAssetsToOpfs({ folderName, assets, title })` to start a download; when it finishes, those URLs are served from cache. See [Download for offline](#download-for-offline-background-fetch) for the client API
 
 ## Usage scenarios
 
 ### Cache on first request
 
-For this scenario to work as intended, your server must support byte-range requests (HTTP Range): it should respond to requests that include a Range header with status 206 and a Content-Length header.
+**Alternative to Background Fetch:** instead of the user explicitly starting a download, the cache is filled when the user first requests a resource (e.g. first time they play a video). Register **opfsServeRange** and **opfsRangeFromNetworkAndCache** (not opfsBackgroundFetch) for that folder. When the file is not in OPFS, the request goes to the network, the response is streamed to the client, and the file is saved to OPFS in the background. Later requests are served from cache. The download is aborted if the tab is closed or the network fails. Use this when you do not need an explicit "Download for offline" button and prefer automatic caching on first access.
 
-How it works is described in [Quick start](#quick-start). In short: a request first checks the OPFS cache; if the file is missing, the request goes to the network, the response is sent to the client, and when possible it is also saved to OPFS. Later requests to the same URL are then served from cache. The plugins involved are opfsServeRange and opfsRangeFromNetworkAndCache. Quota, LRU eviction, and pinned resources are described in the [Plugin reference](#reference-service-worker-plugins).
+Your server must support byte-range requests (HTTP Range): respond with 206 and Content-Length. Quota, LRU eviction, and pinned resources are described in the [Plugin reference](#reference-service-worker-plugins).
 
 ---
 
@@ -99,32 +86,22 @@ In this scenario the user clicks something like "Download for offline"; selected
 
 #### Service worker
 
-In the service worker, register the **opfsBackgroundFetch** plugin. It handles Background Fetch events and messages from the page (response to the filter include/exclude request), so you do not need to add a separate `message` listener.
+Register **opfsServeRange** and **opfsBackgroundFetch** with the **same folderName** per cache. Use a **different folderName** for each cache (e.g. video vs audio).
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import {
-    configureOpfs,
-    opfsServeRange,
-    opfsRangeFromNetworkAndCache,
-    opfsBackgroundFetch,
-} from '@budarin/psw-plugin-opfs-serve-range';
-
-configureOpfs({ folderName: 'range-requests-cache', maxCacheFraction: 0.5 });
+import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
-        opfsServeRange({
-            order: -15,
-            include: ['*.mp4', '*.webm'],
-        }),
-        opfsRangeFromNetworkAndCache({
-            order: -10,
-            include: ['*.mp4', '*.webm'],
-        }),
-        opfsBackgroundFetch({
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
             enableLogging: true,
+        }),
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'audio-cache',
+            include: ['*.mp3', '*.m4a'],
         }),
     ],
     { version: '1.0.0' }
@@ -138,13 +115,19 @@ The easiest approach is the high-level API: one function starts the download. It
 ```typescript
 import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client';
 
-async function downloadForOffline(assets: string[], title: string, downloadTotal?: number) {
+async function downloadForOffline(
+    assets: string[],
+    title: string,
+    downloadTotal?: number
+) {
     try {
         const result = await startDownloadAssetsToOpfs({
+            folderName: 'video-cache',
             assets,
             title,
             downloadTotal,
-            onProgress: (downloaded, total) => console.log(`${downloaded}/${total}`),
+            onProgress: (downloaded, total) =>
+                console.log(`${downloaded}/${total}`),
             signal: myAbortController.signal,
         });
         console.log('Cached:', result.assets);
@@ -165,7 +148,7 @@ function DownloadButton() {
     const { startDownload, status, progress, fileProgress, error, data, reset } = useDownloadAssetsToOpfs();
     return (
         <>
-            <button onClick={() => startDownload({ assets: ['/assets/video.mp4'], title: 'Video' })}>
+            <button onClick={() => startDownload({ folderName: 'video-cache', assets: ['/assets/video.mp4'], title: 'Video' })}>
                 Download
             </button>
             {status === 'pending' && progress && <span>{progress.downloaded}/{progress.total}</span>}
@@ -182,65 +165,131 @@ If you need custom logic (your own download id, filtering, or callbacks), you ca
 
 ## Reference: Service worker plugins
 
-Global cache settings are set via configureOpfs: the OPFS folder name, the fraction of storage quota, and optionally the in-memory range cache limits (rangeCacheMaxSizeBytes, rangeCacheMaxEntries) used by opfsServeRange when rangeCache is enabled. Call configureOpfs before registering plugins. By default the folder name is `range-requests-cache`, the quota fraction is 0.5, and range cache defaults are 5 MB and 300 entries. To clear the entire cache, use clearOpfsCache().
+**High-level helpers**
 
-Storage quota is shared across the origin: OPFS, Cache API, IndexedDB, and other storage share it. When choosing the fraction (maxCacheFraction), keep in mind that the rest may be needed for the service worker cache, app databases, and other features — do not set 1.0 if the app uses more than this cache.
+```ts
+createOpfsServeAndBackgroundFetchPlugins(options: {
+  folderName: string;
+  include: string[];  // required, non-empty
+  exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // default: console
+  maxCacheFraction?: number;
+  pinned?: string[];
+  order?: number;  // default 0 — first plugin gets order, second gets order + 1
+  rangeResponseCacheControl?: string;
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
+}): Plugin[]
+```
+
+```ts
+createOpfsServeAndNetworkCachePlugins(options: {
+  folderName: string;
+  include: string[];  // required, non-empty
+  exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // default: console
+  maxCacheFraction?: number;
+  pinned?: string[];
+  order?: number;  // default 0 — first plugin gets order, second gets order + 1
+  rangeResponseCacheControl?: string;
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
+}): Plugin[]
+```
+
+Each plugin requires **folderName: string** and **include: string[]** (non-empty) in its options. One folder = one cache. **include** and **exclude** can be glob patterns, pathnames, or full URLs (e.g. `['*.mp4', '/video/*']`, `['/assets/video.mp4']`, or `['https://example.com/video/*']`). At plugin init, full URLs are converted to pathnames (same-origin) or dropped (cross-origin). If after normalization `include` becomes empty (e.g. it contained only cross-origin URLs), the factory returns `undefined` and the plugin is not created. **When a request arrives:** if the request URL is cross-origin it is never processed (no serve, no cache). If same-origin, the URL’s pathname is matched against the (normalized) patterns — so a glob like `/video/*` matches a request with URL `https://example.com/video/1.mp4`. Plugins that serve or fill the same cache (e.g. opfsServeRange + opfsBackgroundFetch, or opfsServeRange + opfsRangeFromNetworkAndCache for the “cache on first request” scenario) must use the same **folderName** and consistent cache settings (maxCacheFraction, and when relevant rangeCacheMaxSizeBytes/rangeCacheMaxEntries); otherwise **registerFolderConfig** (called by the plugin factories) throws. Per-folder settings: **maxCacheFraction** (default 0.5), **rangeCacheMaxSizeBytes** (default 5 MB), **rangeCacheMaxEntries** (default 300). To clear a cache, call **clearOpfsCache(folderName)**.
+
+Storage quota is shared across the origin: OPFS, Cache API, IndexedDB, and other storage share it. When choosing the fraction (maxCacheFraction), keep in mind that the rest may be needed for the service worker cache, app databases, and other features — do not set 1.0 if the app uses more than this cache. A **global limit** caps the sum of all folders’ effective fractions: **getGlobalMaxCacheFraction()** (default 0.5) and **setGlobalMaxCacheFraction(fraction)**. If the sum of per-folder maxCacheFraction exceeds this limit, effective fractions are scaled down proportionally so the total equals the global limit (no error).
 
 In environments where OPFS is not available, plugin factories return undefined.
 
-| Plugin | Purpose |
-|--------|---------|
-| **opfsServeRange** | Reads files from OPFS and serves requested byte ranges (206). |
-| **opfsRangeFromNetworkAndCache** | Handles requests that opfsServeRange did not serve from cache: fetches from the network, streams the response to the client immediately, and when possible saves the file to OPFS in the background. This download is aborted when the tab closes or the network drops. |
-| **opfsBackgroundFetch** | When a Background Fetch completes successfully, writes the fetched responses to OPFS; later byte-range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**). |
-| **opfsBackgroundFetchFilter** | Handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. The client side calls **getBackgroundFetchFilter()** to get this. You can register this plugin alone in a custom service worker with your own include and exclude. |
+**Utility functions (SW)**
+
+```ts
+normalizePatternList(patterns: string[] | undefined, baseOrigin: string): { list: string[] | undefined; dropped: NormalizePatternListDropped }
+// At init: full URLs → pathname; cross-origin/invalid go to dropped. Warnings are emitted by plugin factories via logger (default: console).
+emitDroppedPatternWarnings(dropped: NormalizePatternListDropped, logger: { warn?: (message: string) => void }): void
+getRoot(): Promise<FileSystemDirectoryHandle>
+getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
+clearOpfsCache(folderName: string): Promise<void>
+registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
+// FolderCacheConfig: { maxCacheFraction?: number; rangeCacheMaxSizeBytes?: number; rangeCacheMaxEntries?: number }
+getGlobalMaxCacheFraction(): number   // default 0.5
+setGlobalMaxCacheFraction(fraction: number): void   // (0, 1], throws if invalid
+getMaxCacheFraction(folderName: string): number
+getRangeCacheMaxSizeBytes(folderName: string): number
+getRangeCacheMaxEntries(folderName: string): number
+```
+
+| Plugin                           | Purpose                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **opfsServeRange**               | Reads files from OPFS and serves requested byte ranges (206).                                                                                                                                                                                                                                                                                                    |
+| **opfsRangeFromNetworkAndCache** | Handles requests that opfsServeRange did not serve from cache: fetches from the network, streams the response to the client immediately, and when possible saves the file to OPFS in the background. This download is aborted when the tab closes or the network drops.                                                                                          |
+| **opfsBackgroundFetch**          | When a Background Fetch completes successfully, writes the fetched responses to OPFS; later byte-range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**). |
+| **opfsBackgroundFetchFilter**    | Handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. The client side calls **getBackgroundFetchFilter()** to get this. You can register this plugin alone in a custom service worker with your own include and exclude.                                     |
 
 **opfsServeRange**
 
 ```ts
-opfsServeRange(options?: {
+opfsServeRange(options: {
+  folderName: string;  // required
   order?: number;
-  enableLogging?: boolean;
-  include?: string[];
+  include: string[];  // required, non-empty; if all patterns normalize to empty, returns undefined
   exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // default: console
   rangeResponseCacheControl?: string; // default: '' (no browser HTTP cache for ranges)
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory cache for 206 responses; limits from configureOpfs when omitted
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory cache for 206 responses; limits from folder config when omitted
+  maxCacheFraction?: number;
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
 }): Plugin | undefined
 ```
 
 **opfsRangeFromNetworkAndCache**
 
 ```ts
-opfsRangeFromNetworkAndCache(options?: {
+opfsRangeFromNetworkAndCache(options: {
+  folderName: string;  // required
   order?: number;
-  include?: string[];
+  include: string[];  // required, non-empty; if all patterns normalize to empty, returns undefined
   exclude?: string[];
   enableLogging?: boolean;
+  logger?: Logger; // default: console
   pinned?: string[];
+  maxCacheFraction?: number;
 }): Plugin | undefined
 ```
 
 **opfsBackgroundFetch**
 
 ```ts
-opfsBackgroundFetch(options?: {
+opfsBackgroundFetch(options: {
+  folderName: string;  // required
   order?: number;
-  include?: string[];
+  include: string[];  // required, non-empty; if all patterns normalize to empty, returns undefined
   exclude?: string[];
   enableLogging?: boolean;
+  logger?: Logger; // default: console
   pinned?: string[];
+  maxCacheFraction?: number;
 }): Plugin | undefined
 ```
 
 **opfsBackgroundFetchFilter**
 
-This plugin answers the filter request that the client sends via **getBackgroundFetchFilter()**. When using the full stack you do not need to register it separately: opfsBackgroundFetch calls it internally. For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic.
+This plugin answers the filter request that the client sends via **getBackgroundFetchFilter()**. When using the full stack you do not need to register it separately: opfsBackgroundFetch calls it internally. For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic. The filter normalizes include/exclude the same way (full URLs → pathnames or dropped); the client receives pathnames/globs. Returns **undefined** if after normalization include is empty (e.g. only cross-origin URLs), so no plugin is created.
 
 ```ts
-opfsBackgroundFetchFilter(options?: {
-  include?: string[];
+opfsBackgroundFetchFilter(options: {
+  include: string[];  // required, non-empty; if all patterns normalize to empty, returns undefined
   exclude?: string[];
-}): Plugin
+  logger?: Logger; // default: console
+}): Plugin | undefined
 ```
 
 Pinned resources (the pinned option): an array of glob patterns for URLs. Resources matching these patterns are not evicted when space is low (LRU). Supported by both plugins that write to OPFS: opfsRangeFromNetworkAndCache and opfsBackgroundFetch.
@@ -255,16 +304,30 @@ Client-side functions are imported from `@budarin/psw-plugin-opfs-serve-range/cl
 
 For startDownloadAssetsToOpfs to work as intended, the service worker must register a plugin that answers the filter request — either **opfsBackgroundFetch** (which calls the filter plugin internally) or **opfsBackgroundFetchFilter** alone (for a custom SW). Otherwise the page cannot get the filter settings and the download may use the wrong set of URLs.
 
-- **getBackgroundFetchFilter()** — Asks the service worker for the current filter settings (include and exclude). The **opfsBackgroundFetchFilter** plugin or **opfsBackgroundFetch** (which calls it internally) answers. Returns a promise with an object `{ include?, exclude? }`.
+**getBackgroundFetchFilter()**
 
-- **filterAssetsForOpfs(assets, include?, exclude?, origin?)** — Filters a list of URLs by the same rules as the plugin (glob patterns). Use it together with the result of getBackgroundFetchFilter() when building your own download logic.
+```ts
+getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
+// Resolves with filter from SW (opfsBackgroundFetchFilter or opfsBackgroundFetch). Empty object on timeout or no SW.
+```
 
-- **startDownloadAssetsToOpfs(options)** — Asks the service worker for the filter, filters the URLs, starts Background Fetch. The promise resolves when the service worker has written the files to OPFS; the result includes lists of written, failed/skipped, and filtered-out URLs. You can pass progress callbacks and a cancel signal.
+**filterAssetsForOpfs(assets, include?, exclude?)**
 
-**Before starting:** From the asset list (after include/exclude), the function first excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to listOpfsCachedResources()). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
+```ts
+filterAssetsForOpfs(
+  assets: string[],  // pathnames, e.g. '/video/1.mp4'
+  include?: string[],
+  exclude?: string[]
+): string[]
+```
+
+**startDownloadAssetsToOpfs(options)**
+
+**Before starting:** From the asset list (after include/exclude), the function first excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to **listOpfsCachedResources(folderName)**). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
 
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
+    folderName: string;  // required; same as in opfsBackgroundFetch
     assets: string[];
     title?: string;
     downloadTotal?: number;
@@ -299,6 +362,23 @@ If you are not using startDownloadAssetsToOpfs or the hook and want to wire the 
 
 Each function takes a handler and returns a function to unsubscribe. When each type of message is sent is described in [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md).
 
+```ts
+// All: (handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void) => () => void
+onOPFSQuotaExceeded(handler): () => void
+onOPFSWriteSkipped(handler): () => void
+onOPFSCacheLimitReached(handler): () => void
+onOPFSEvictionCompleted(handler): () => void
+onOPFSWriteFailed(handler): () => void
+onOPFSSkipQuotaExceeded(handler): () => void
+onOPFSBackgroundFetchFailed(handler): () => void
+onOPFSBackgroundFetchAborted(handler): () => void
+onOPFSBackgroundFetchCompleted(handler): () => void
+onOPFSBackgroundFetchFileWritten(handler): () => void
+onOPFSRangeCacheFetchStarted(handler): () => void
+onOPFSRangeCacheFetchAllDone(handler): () => void
+// OpfsMessagePayload: { url?, size?, limit?, reason?, registrationId?, assets?, written?, failedOrSkipped?, asset?, loadedAssets?, totalCount? }
+```
+
 **Skip list:** When streaming a write to OPFS, the browser may throw QuotaExceeded. If by then we have already written as many bytes as the whole cache size, evicting old files will not free enough space. That URL is added to the skip list (kept in the service worker’s memory for its lifetime). On later requests for that URL, the plugin does not attempt to cache again and sends **onOPFSSkipQuotaExceeded** so the client can show a warning.
 
 - **onOPFSQuotaExceeded** — Quota exceeded while writing to OPFS.
@@ -317,11 +397,26 @@ Event types: `OpfsMessagePayload`; constants `OPFS_MSG_*`, `OPFS_REQUEST_GET_BAC
 
 ### Cache utilities
 
-These functions are called from the page. To clear the entire cache, call clearOpfsCache() from the service worker or from the page.
+These functions are called from the page. **folderName** must match the name used when registering the plugins. To clear a cache, call **clearOpfsCache(folderName)** (from the service worker or from the page, passing the same folder name).
 
-- **listOpfsCachedResources()** — List of cached resources (`Promise<OpfsCachedResource[]>`).
-- **hasInOpfsCache(url)** — Whether the URL is in the cache.
-- **deleteFromOpfsCache(url)** — Remove the resource by URL from the cache.
+**listOpfsCachedResources(folderName)**
+
+```ts
+listOpfsCachedResources(folderName: string): Promise<OpfsCachedResource[]>
+// OpfsCachedResource: { url: string; size: number; type?: string; lastModified?: string }
+```
+
+**hasInOpfsCache(url, folderName)**
+
+```ts
+hasInOpfsCache(url: string, folderName: string): Promise<boolean>
+```
+
+**deleteFromOpfsCache(url, folderName)**
+
+```ts
+deleteFromOpfsCache(url: string, folderName: string): Promise<void>
+```
 
 ---
 
@@ -335,7 +430,21 @@ For custom plugins or direct file access. File key: `hex(SHA-256(URL))` (64 char
 
 ## Writing your own OPFS plugin
 
-To write to OPFS with your own logic using the same format: **getRoot**, **getOpfsDir**, **urlToOpfsKey**, **writeToOpfs**, **metadataFromResponse**.
+To write to OPFS with your own logic using the same format:
+
+```ts
+getRoot(): Promise<FileSystemDirectoryHandle>
+getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
+urlToOpfsKey(url: string): Promise<string>
+metadataFromResponse(response: Response, url: string): OpfsMetadata  // size from Content-Length or 0
+writeToOpfs(
+  dir: FileSystemDirectoryHandle,
+  key: string,
+  bodyStream: ReadableStream<Uint8Array>,
+  metadata: OpfsMetadata,
+  options: WriteToOpfsOptions  // { folderName: string; url?; knownSize? }
+): Promise<void>
+```
 
 ```typescript
 import {
@@ -347,10 +456,10 @@ import {
 } from '@budarin/psw-plugin-opfs-serve-range';
 
 const root = await getRoot();
-const dir = await getOpfsDir(root, true);
+const dir = await getOpfsDir(root, true, 'my-cache');
 const key = await urlToOpfsKey(url);
 const metadata = metadataFromResponse(response, url);
-await writeToOpfs(dir, key, response.body, metadata);
+await writeToOpfs(dir, key, response.body, metadata, { folderName: 'my-cache' });
 ```
 
 The response may omit `Content-Length` — size is determined by counting bytes in the body when writing. For cache limits to apply (space check before write, eviction, notifications, and skip list), pass the fifth argument `options` to `writeToOpfs` with `url` and `knownSize`.

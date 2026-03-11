@@ -34,44 +34,33 @@ pnpm add @budarin/psw-plugin-opfs-serve-range
 
 ## Быстрый старт
 
-Самый простой сценарий: при первом запросе к ресурсу данные загружаются из сети и сохраняются в хранилище OPFS. При следующих запросах к тому же адресу ответ отдаётся уже из кеша, без обращения к сети.
-
-Для этого в сервис-воркере подключают два плагина:
+Типичный сценарий: пользователь сам выбирает, что скачать (кнопка «Скачать для офлайна»). Подключают **opfsServeRange** (отдаёт диапазоны байтов из OPFS, если файл в кеше) и **opfsBackgroundFetch** (пишет в OPFS по завершении Background Fetch). Для **разных** кешей — **разные folderName** (например видео, аудио).
 
 - **opfsServeRange** — отдаёт запрошенные диапазоны байтов из OPFS, если файл уже есть в кеше.
-- **opfsRangeFromNetworkAndCache** — если файла в кеше ещё нет, запрос уходит в сеть; ответ сразу передаётся клиенту потоком, а в фоне при необходимости тот же файл сохраняется в OPFS.
+- **opfsBackgroundFetch** — когда пользователь запускает загрузку через Background Fetch (например со страницы через `startDownloadAssetsToOpfs`), готовые ответы записываются в OPFS; последующие запросы обслуживаются из кеша через opfsServeRange.
+
+Пример с **отдельными кешами** для видео и аудио (по два плагина на папку):
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import {
-    configureOpfs,
-    opfsServeRange,
-    opfsRangeFromNetworkAndCache,
-} from '@budarin/psw-plugin-opfs-serve-range';
-
-configureOpfs({
-    folderName: 'ranges-media-cache',
-    maxCacheFraction: 0.5,
-});
+import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
-        opfsServeRange({
-            order: -15,
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        opfsRangeFromNetworkAndCache({
-            order: -10,
-            include: ['*.mp4', '*.webm'],
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'audio-cache',
+            include: ['*.mp3', '*.m4a'],
         }),
     ],
     { version: '1.0.0' }
 );
 ```
 
-После такой настройки запросы к адресам из списка `include` сначала проверяют кеш в OPFS; если файла там нет, идёт обращение в сеть и при успешной загрузке — запись в кеш. Отдельный код на странице для этого сценария не нужен.
-
-Важно: загрузка, которую запускает плагин opfsRangeFromNetworkAndCache, прерывается при закрытии вкладки или обрыве сети. О том, идёт ли такая фоновая загрузка в кеш, страница может узнавать по подпискам **onOPFSRangeCacheFetchStarted** и **onOPFSRangeCacheFetchAllDone** (включить и выключить индикатор). Если нужна загрузка, которая продолжается и после закрытия вкладки, используйте сценарий [«Скачать для офлайна»](#скачать-для-офлайна-background-fetch).
+Плагины, которые используют **один и тот же** кеш (одну папку), должны иметь один и тот же **folderName** и согласованные опции. На странице вызывают `startDownloadAssetsToOpfs({ folderName, assets, title })` для запуска загрузки; по завершении эти URL обслуживаются из кеша. Подробнее — в разделе [«Скачать для офлайна»](#скачать-для-офлайна-background-fetch).
 
 ---
 
@@ -79,9 +68,9 @@ initServiceWorker(
 
 ### Кеш при первом запросе
 
-Чтобы сценарий работал как задумано, сервер должен поддерживать запросы по диапазону байтов (HTTP Range): на запрос с заголовком Range он должен отвечать статусом 206 и указывать размер в заголовке Content-Length.
+**Альтернатива Background Fetch:** кеш заполняется при первом запросе к ресурсу (например при первом проигрывании видео), без отдельной кнопки «Скачать». Регистрируют **opfsServeRange** и **opfsRangeFromNetworkAndCache** (без opfsBackgroundFetch) для этой папки. Если файла нет в OPFS, запрос уходит в сеть, ответ отдаётся клиенту потоком и в фоне сохраняется в OPFS. Дальнейшие запросы обслуживаются из кеша. Загрузка прерывается при закрытии вкладки или обрыве сети. Используйте этот сценарий, когда не нужна кнопка «Скачать для офлайна» и нужна автоматическая загрузка в кеш при первом обращении.
 
-Как это устроено, описано в разделе [Быстрый старт](#быстрый-старт). Кратко: при запросе сначала проверяется кеш в OPFS; если файла нет, запрос уходит в сеть, ответ отдаётся клиенту и при возможности сохраняется в OPFS. Следующие запросы по тому же адресу уже обслуживаются из кеша. Используются плагины opfsServeRange и opfsRangeFromNetworkAndCache. Настройки квоты, вытеснения по LRU и закреплённых ресурсов описаны в [Справочнике по плагинам](#справочник-плагины-сервис-воркер).
+Сервер должен поддерживать запросы по диапазону байтов (HTTP Range): ответ 206 и Content-Length. Квота, вытеснение по LRU и закреплённые ресурсы — в [Справочнике по плагинам](#справочник-плагины-сервис-воркер).
 
 ---
 
@@ -91,32 +80,22 @@ initServiceWorker(
 
 #### Сервис-воркер
 
-В сервис-воркере нужно зарегистрировать плагин **opfsBackgroundFetch**. Он обрабатывает события Background Fetch и сообщения от страницы (ответ на запрос фильтра include/exclude), поэтому отдельно вешать обработчик `message` не требуется.
+В сервис-воркере регистрируют **opfsServeRange** и **opfsBackgroundFetch** с одним **folderName** на кеш. Для **каждого** кеша — **свой folderName** (например видео и аудио — разные папки).
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import {
-    configureOpfs,
-    opfsServeRange,
-    opfsRangeFromNetworkAndCache,
-    opfsBackgroundFetch,
-} from '@budarin/psw-plugin-opfs-serve-range';
-
-configureOpfs({ folderName: 'range-requests-cache', maxCacheFraction: 0.5 });
+import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
-        opfsServeRange({
-            order: -15,
-            include: ['*.mp4', '*.webm'],
-        }),
-        opfsRangeFromNetworkAndCache({
-            order: -10,
-            include: ['*.mp4', '*.webm'],
-        }),
-        opfsBackgroundFetch({
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
             enableLogging: true,
+        }),
+        ...createOpfsServeAndBackgroundFetchPlugins({
+            folderName: 'audio-cache',
+            include: ['*.mp3', '*.m4a'],
         }),
     ],
     { version: '1.0.0' }
@@ -137,6 +116,7 @@ async function downloadForOffline(
 ) {
     try {
         const result = await startDownloadAssetsToOpfs({
+            folderName: 'video-cache',
             assets,
             title,
             downloadTotal,
@@ -162,7 +142,7 @@ function DownloadButton() {
     const { startDownload, status, progress, fileProgress, error, data, reset } = useDownloadAssetsToOpfs();
     return (
         <>
-            <button onClick={() => startDownload({ assets: ['/assets/video.mp4'], title: 'Видео' })}>
+            <button onClick={() => startDownload({ folderName: 'video-cache', assets: ['/assets/video.mp4'], title: 'Видео' })}>
                 Скачать
             </button>
             {status === 'pending' && progress && <span>{progress.downloaded}/{progress.total}</span>}
@@ -179,11 +159,65 @@ function DownloadButton() {
 
 ## Справочник: плагины (сервис-воркер)
 
-Общие настройки кеша задаются через configureOpfs: имя папки в OPFS, доля квоты хранилища и при необходимости лимиты in-memory кеша диапазонов (rangeCacheMaxSizeBytes, rangeCacheMaxEntries) для opfsServeRange при включённом rangeCache. Вызвать configureOpfs нужно до регистрации плагинов. По умолчанию имя папки — `range-requests-cache`, доля квоты — 0.5, лимиты кеша диапазонов — 5 МБ и 300 записей. Полностью очистить кеш можно функцией clearOpfsCache().
+**Высокоуровневые фабрики**
 
-Квота хранилища общая для origin: её делят OPFS, Cache API, IndexedDB и другие хранилища. При выборе доли (maxCacheFraction) учитывайте, что остальное место может понадобиться для кеша сервис-воркера, баз данных приложения и прочего — не задавайте 1.0, если приложение использует не только этот кеш.
+```ts
+createOpfsServeAndBackgroundFetchPlugins(options: {
+  folderName: string;
+  include: string[];  // обязательно, непустой массив
+  exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // по умолчанию console
+  maxCacheFraction?: number;
+  pinned?: string[];
+  order?: number;  // по умолчанию 0 — первый плагин получает order, второй — order + 1
+  rangeResponseCacheControl?: string;
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
+}): Plugin[]
+```
+
+```ts
+createOpfsServeAndNetworkCachePlugins(options: {
+  folderName: string;
+  include: string[];  // обязательно, непустой массив
+  exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // по умолчанию console
+  maxCacheFraction?: number;
+  pinned?: string[];
+  order?: number;  // по умолчанию 0 — первый плагин получает order, второй — order + 1
+  rangeResponseCacheControl?: string;
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
+}): Plugin[]
+```
+
+У каждого плагина в опциях обязательны **folderName: string** и **include: string[]** (непустой массив). Одна папка = один кеш. **include** и **exclude** могут быть glob-паттернами, pathname'ами или полными URL (например `['*.mp4', '/video/*']`, `['/assets/video.mp4']` или `['https://example.com/video/*']`). При инициализации полные URL приводятся к pathname (same-origin) или отбрасываются (cross-origin). Если после нормализации `include` оказался пустым (например в `include` были только cross-origin URL), фабрика возвращает `undefined` и плагин не создаётся. **Когда приходит запрос:** если URL запроса с другого origin — запрос не обрабатывается (ни отдача из кеша, ни запись). Если same-origin — по pathname URL запроса сопоставляем с (нормализованными) паттернами: например глоб `/video/*` совпадает с запросом на `https://example.com/video/1.mp4`. Плагины, которые обслуживают один и тот же кеш (например opfsServeRange + opfsBackgroundFetch или opfsServeRange + opfsRangeFromNetworkAndCache для сценария «кеш при первом запросе»), должны использовать один и тот же **folderName** и согласованные настройки (maxCacheFraction и при необходимости rangeCacheMaxSizeBytes/rangeCacheMaxEntries); иначе **registerFolderConfig** (вызывается фабриками плагинов) выбросит ошибку. Настройки по умолчанию для папки: maxCacheFraction 0.5, rangeCacheMaxSizeBytes 5 МБ, rangeCacheMaxEntries 300. Очистить кеш: **clearOpfsCache(folderName)**.
+
+Квота хранилища общая для origin: её делят OPFS, Cache API, IndexedDB и другие хранилища. При выборе доли (maxCacheFraction) учитывайте, что остальное место может понадобиться для кеша сервис-воркера, баз данных приложения и прочего — не задавайте 1.0, если приложение использует не только этот кеш. **Глобальный лимит** ограничивает сумму эффективных долей всех папок: **getGlobalMaxCacheFraction()** (по умолчанию 0.5) и **setGlobalMaxCacheFraction(fraction)**. Если сумма долей папок превышает этот лимит, эффективные доли пропорционально уменьшаются так, чтобы сумма равнялась глобальному лимиту (без выброса ошибки).
 
 В средах, где OPFS недоступен, фабрики плагинов возвращают undefined.
+
+**Утилиты (SW)**
+
+```ts
+normalizePatternList(patterns: string[] | undefined, baseOrigin: string): { list: string[] | undefined; dropped: NormalizePatternListDropped }
+// При инициализации: полные URL → pathname; cross-origin/невалидные попадают в dropped. Варнинги выводятся фабриками плагинов через logger (по умолчанию console).
+emitDroppedPatternWarnings(dropped: NormalizePatternListDropped, logger: { warn?: (message: string) => void }): void
+getRoot(): Promise<FileSystemDirectoryHandle>
+getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
+clearOpfsCache(folderName: string): Promise<void>
+registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
+// FolderCacheConfig: { maxCacheFraction?: number; rangeCacheMaxSizeBytes?: number; rangeCacheMaxEntries?: number }
+getGlobalMaxCacheFraction(): number   // по умолчанию 0.5
+setGlobalMaxCacheFraction(fraction: number): void   // (0, 1], throw при неверном значении
+getMaxCacheFraction(folderName: string): number
+getRangeCacheMaxSizeBytes(folderName: string): number
+getRangeCacheMaxEntries(folderName: string): number
+```
 
 | Плагин                           | Назначение                                                                                                                                                                                                                                                                                                                                                                                              |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -195,49 +229,61 @@ function DownloadButton() {
 **opfsServeRange**
 
 ```ts
-opfsServeRange(options?: {
+opfsServeRange(options: {
+  folderName: string;  // обязательно
   order?: number;
-  enableLogging?: boolean;
-  include?: string[];
+  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
   exclude?: string[];
+  enableLogging?: boolean;
+  logger?: Logger; // по умолчанию console
   rangeResponseCacheControl?: string; // по умолчанию '' (не кэшировать диапазоны в HTTP-кеше браузера)
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory кеш 206-ответов; лимиты из configureOpfs, если не заданы
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory кеш 206-ответов; лимиты из конфига папки, если не заданы
+  maxCacheFraction?: number;
+  rangeCacheMaxSizeBytes?: number;
+  rangeCacheMaxEntries?: number;
 }): Plugin | undefined
 ```
 
 **opfsRangeFromNetworkAndCache**
 
 ```ts
-opfsRangeFromNetworkAndCache(options?: {
+opfsRangeFromNetworkAndCache(options: {
+  folderName: string;  // обязательно
   order?: number;
-  include?: string[];
+  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
   exclude?: string[];
   enableLogging?: boolean;
+  logger?: Logger; // по умолчанию console
   pinned?: string[];
+  maxCacheFraction?: number;
 }): Plugin | undefined
 ```
 
 **opfsBackgroundFetch**
 
 ```ts
-opfsBackgroundFetch(options?: {
+opfsBackgroundFetch(options: {
+  folderName: string;  // обязательно
   order?: number;
-  include?: string[];
+  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
   exclude?: string[];
   enableLogging?: boolean;
+  logger?: Logger; // по умолчанию console
   pinned?: string[];
+  maxCacheFraction?: number;
 }): Plugin | undefined
 ```
 
 **opfsBackgroundFetchFilter**
 
-Плагин отвечает на запрос фильтра, который со стороны клиента отправляет **getBackgroundFetchFilter()**. При использовании полного стека регистрировать его отдельно не нужно: opfsBackgroundFetch сам вызывает этот плагин. В кастомном сервис-воркере зарегистрируйте opfsBackgroundFetchFilter с теми же include и exclude, что и ваша логика загрузки.
+Плагин отвечает на запрос фильтра, который со стороны клиента отправляет **getBackgroundFetchFilter()**. При использовании полного стека регистрировать его отдельно не нужно: opfsBackgroundFetch сам вызывает этот плагин. В кастомном сервис-воркере зарегистрируйте opfsBackgroundFetchFilter с теми же include и exclude, что и ваша логика загрузки. Фильтр так же нормализует include/exclude (полные URL → pathname или отбрасываются); клиент получает pathname/глобы. Возвращает **undefined**, если после нормализации include пуст (например только cross-origin URL), плагин не создаётся.
 
 ```ts
-opfsBackgroundFetchFilter(options?: {
-  include?: string[];
+opfsBackgroundFetchFilter(options: {
+  include: string[];  // обязательно, непустой; если все паттерны нормализуются в пустой список — возвращает undefined
   exclude?: string[];
-}): Plugin
+  logger?: Logger; // по умолчанию console
+}): Plugin | undefined
 ```
 
 Закреплённые ресурсы (опция pinned): массив масок (glob) по адресам. Ресурсы, подходящие под эти маски, не вытесняются при нехватке места (LRU). Поддерживается обоими плагинами, которые пишут в OPFS: opfsRangeFromNetworkAndCache и opfsBackgroundFetch.
@@ -252,16 +298,30 @@ Entry point: `@budarin/psw-plugin-opfs-serve-range/client`. React-хук: `@buda
 
 **Условие:** в SW должен быть зарегистрирован плагин, отвечающий на запрос фильтра — либо **opfsBackgroundFetch** (он внутри вызывает плагин ответа по фильтру), либо отдельно **opfsBackgroundFetchFilter** (для кастомного SW). Иначе `startDownloadAssetsToOpfs` не получит фильтр и загрузка может быть некорректной.
 
-- **getBackgroundFetchFilter()** — запрашивает у сервис-воркера текущие настройки фильтра (include и exclude). Ответ отдаёт плагин **opfsBackgroundFetchFilter** или **opfsBackgroundFetch** (он вызывает этот плагин внутри). Возвращает обещание с объектом `{ include?, exclude? }`.
+**getBackgroundFetchFilter()**
 
-- **filterAssetsForOpfs(assets, include?, exclude?, origin?)** — отбирает из списка адресов только те, что подходят под те же правила, что и плагин (по маскам glob). Удобно использовать вместе с результатом getBackgroundFetchFilter(), если собираете свою логику загрузки.
+```ts
+getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
+// Резолвится фильтром от SW (opfsBackgroundFetchFilter или opfsBackgroundFetch). Пустой объект при таймауте или отсутствии SW.
+```
 
-- **startDownloadAssetsToOpfs(options)** — запрашивает у сервис-воркера фильтр, отбирает подходящие адреса, запускает Background Fetch. Обещание выполняется, когда сервис-воркер записал файлы в OPFS; в результате приходят списки записанных (written), пропущенных или с ошибкой (failedOrSkipped) и отфильтрованных (filteredOut). Можно передать колбеки прогресса и отмену через signal.
+**filterAssetsForOpfs(assets, include?, exclude?)**
 
-**Логика перед запуском:** из списка assets (после фильтра include/exclude) сначала исключаются те, что уже качаются в других активных Background Fetch (pathname берутся из matchAll() по каждой активной регистрации с префиксом `opfs-ranges-`). Затем исключаются те, что уже есть в OPFS (один вызов listOpfsCachedResources()). Порядок такой специально: сначала «в процессе», потом «уже в кеше» — чтобы не пропустить только что завершившуюся загрузку. В загрузку уходит только то, что осталось. Если ничего не осталось, промис сразу выполняется с `written: assetsToUse` (ничего не качаем). Идентификатор загрузки считается по набору pathname'ов идемпотентно (getOpfsBackgroundFetchId). Если с тем же набором загрузка уже идёт, новый вызов не создаёт вторую, а подписывается на уже идущую (attach); промис выполнится при её завершении.
+```ts
+filterAssetsForOpfs(
+  assets: string[],  // pathname'ы, напр. '/video/1.mp4'
+  include?: string[],
+  exclude?: string[]
+): string[]
+```
+
+**startDownloadAssetsToOpfs(options)**
+
+**Логика перед запуском:** из списка assets (после фильтра include/exclude) сначала исключаются те, что уже качаются в других активных Background Fetch (pathname берутся из matchAll() по каждой активной регистрации с префиксом `opfs-ranges-`). Затем исключаются те, что уже есть в OPFS (один вызов **listOpfsCachedResources(folderName)**). Порядок такой специально: сначала «в процессе», потом «уже в кеше» — чтобы не пропустить только что завершившуюся загрузку. В загрузку уходит только то, что осталось. Если ничего не осталось, промис сразу выполняется с `written: assetsToUse` (ничего не качаем). Идентификатор загрузки считается по набору pathname'ов идемпотентно (getOpfsBackgroundFetchId). Если с тем же набором загрузка уже идёт, новый вызов не создаёт вторую, а подписывается на уже идущую (attach); промис выполнится при её завершении.
 
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
+    folderName: string;  // обязательно; тот же, что в opfsBackgroundFetch
     assets: string[];
     title?: string;
     downloadTotal?: number;
@@ -296,6 +356,23 @@ useDownloadAssetsToOpfs(): {
 
 Каждая функция принимает обработчик и возвращает функцию для отписки. В каком случае сервис-воркер отправляет то или иное сообщение, описано в [описании поведения кеша](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md).
 
+```ts
+// Все: (handler: (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void) => () => void
+onOPFSQuotaExceeded(handler): () => void
+onOPFSWriteSkipped(handler): () => void
+onOPFSCacheLimitReached(handler): () => void
+onOPFSEvictionCompleted(handler): () => void
+onOPFSWriteFailed(handler): () => void
+onOPFSSkipQuotaExceeded(handler): () => void
+onOPFSBackgroundFetchFailed(handler): () => void
+onOPFSBackgroundFetchAborted(handler): () => void
+onOPFSBackgroundFetchCompleted(handler): () => void
+onOPFSBackgroundFetchFileWritten(handler): () => void
+onOPFSRangeCacheFetchStarted(handler): () => void
+onOPFSRangeCacheFetchAllDone(handler): () => void
+// OpfsMessagePayload: { url?, size?, limit?, reason?, registrationId?, assets?, written?, failedOrSkipped?, asset?, loadedAssets?, totalCount? }
+```
+
 **Список отменённых (skip list):** при потоковой записи в OPFS может произойти превышение квоты (QuotaExceeded). Если к моменту ошибки файл оказался не меньше всего кеша, вытеснять старые файлы бесполезно — места всё равно не хватит. Такой URL заносят в список отменённых (в памяти сервис-воркера на время его жизни). При следующих запросах к этому адресу плагин не пытается кешировать ответ и отправляет **onOPFSSkipQuotaExceeded**, чтобы клиент мог показать предупреждение.
 
 - **onOPFSQuotaExceeded** — квота исчерпана при записи в OPFS; URL при этом может быть занесён в список отменённых (см. выше).
@@ -314,11 +391,26 @@ useDownloadAssetsToOpfs(): {
 
 ### Утилиты кэша
 
-Эти функции вызываются на странице (в клиентском коде). Полностью очистить кеш можно вызовом clearOpfsCache() из сервис-воркера или со страницы.
+Эти функции вызываются на странице (в клиентском коде). **folderName** должен совпадать с именем папки при регистрации плагинов. Очистить кеш: **clearOpfsCache(folderName)** (из сервис-воркера или со страницы).
 
-- **listOpfsCachedResources()** — возвращает список закешированных ресурсов.
-- **hasInOpfsCache(url)** — проверяет, есть ли такой адрес в кеше.
-- **deleteFromOpfsCache(url)** — удаляет ресурс по адресу из кеша.
+**listOpfsCachedResources(folderName)**
+
+```ts
+listOpfsCachedResources(folderName: string): Promise<OpfsCachedResource[]>
+// OpfsCachedResource: { url: string; size: number; type?: string; lastModified?: string }
+```
+
+**hasInOpfsCache(url, folderName)**
+
+```ts
+hasInOpfsCache(url: string, folderName: string): Promise<boolean>
+```
+
+**deleteFromOpfsCache(url, folderName)**
+
+```ts
+deleteFromOpfsCache(url: string, folderName: string): Promise<void>
+```
 
 ---
 
@@ -332,7 +424,21 @@ useDownloadAssetsToOpfs(): {
 
 ## Свой плагин записи в OPFS
 
-Если нужно записывать в OPFS по своей логике, но в том же формате, что и плагины пакета, используйте функции getRoot, getOpfsDir, urlToOpfsKey, writeToOpfs, metadataFromResponse.
+Если нужно записывать в OPFS по своей логике, но в том же формате, что и плагины пакета:
+
+```ts
+getRoot(): Promise<FileSystemDirectoryHandle>
+getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
+urlToOpfsKey(url: string): Promise<string>
+metadataFromResponse(response: Response, url: string): OpfsMetadata  // size из Content-Length или 0
+writeToOpfs(
+  dir: FileSystemDirectoryHandle,
+  key: string,
+  bodyStream: ReadableStream<Uint8Array>,
+  metadata: OpfsMetadata,
+  options: WriteToOpfsOptions  // { folderName: string; url?; knownSize? }
+): Promise<void>
+```
 
 ```typescript
 import {
@@ -344,10 +450,10 @@ import {
 } from '@budarin/psw-plugin-opfs-serve-range';
 
 const root = await getRoot();
-const dir = await getOpfsDir(root, true);
+const dir = await getOpfsDir(root, true, 'my-cache');
 const key = await urlToOpfsKey(url);
 const metadata = metadataFromResponse(response, url);
-await writeToOpfs(dir, key, response.body, metadata);
+await writeToOpfs(dir, key, response.body, metadata, { folderName: 'my-cache' });
 ```
 
 Ответ от сервера может быть без заголовка Content-Length; при записи полного тела размер определяется путём подсчёта байт в теле. Чтобы при записи учитывались лимиты кеша (проверка места до записи, эвикция, оповещения и список отменённых), передавайте в writeToOpfs пятый аргумент options с полями url и knownSize.

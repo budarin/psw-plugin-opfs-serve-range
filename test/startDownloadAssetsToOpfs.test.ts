@@ -42,14 +42,14 @@ vi.mock('@budarin/pluggable-serviceworker/client/background-fetch', () => ({
 const fakeSwRegistration = {};
 const originalLocation = globalThis.location;
 
-/** Ответ SW на запрос фильтра (для тестов «filter»). По умолчанию {}. */
-let swFilterResponse: { include?: string[]; exclude?: string[] } = {};
+/** Ответ SW на запрос фильтра (для тестов «filter»). По умолчанию include ['*'] — все проходят. */
+let swFilterResponse: { include?: string[]; exclude?: string[] } = { include: ['*'] };
 const messageListeners: Array<{ type: string; fn: (e: MessageEvent) => void }> = [];
 
 beforeEach(() => {
     vi.clearAllMocks();
     capturedId = null;
-    swFilterResponse = {};
+    swFilterResponse = { include: ['*'] };
     messageListeners.length = 0;
     Object.keys(handlers).forEach((k) => delete handlers[k]);
     Object.defineProperty(globalThis, 'location', {
@@ -110,10 +110,22 @@ function fireMessage(type: string, data: Record<string, unknown>) {
     }
 }
 
+/** Ждёт, пока мок startBackgroundFetch будет вызван и capturedId заполнится (макс. timeoutMs). */
+async function waitForCapturedId(timeoutMs = 500): Promise<string> {
+    const deadline = Date.now() + timeoutMs;
+    while (capturedId === null && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10));
+    }
+    if (capturedId === null) {
+        throw new Error(`capturedId was not set within ${timeoutMs}ms`);
+    }
+    return capturedId;
+}
+
 describe('startDownloadAssetsToOpfs', () => {
     it('resolves immediately when assets is empty', async () => {
         const { startDownloadAssetsToOpfs } = await getModule();
-        const result = await startDownloadAssetsToOpfs({ assets: [] });
+        const result = await startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: [] });
         expect(result).toEqual({
             registrationId: '',
             assets: [],
@@ -125,17 +137,16 @@ describe('startDownloadAssetsToOpfs', () => {
     it('resolves with assets, written, failedOrSkipped when COMPLETED received', async () => {
         const { startDownloadAssetsToOpfs } = await getModule();
         const assets = ['/video.mp4', '//audio.mp3'];
-        const p = startDownloadAssetsToOpfs({ assets });
-        await new Promise<void>((r) => setTimeout(r, 50));
-        expect(capturedId).not.toBeNull();
+        const p = startDownloadAssetsToOpfs({ folderName: 'test-cache', assets });
+        const id = await waitForCapturedId();
         fireMessage(OPFS_MSG_BACKGROUND_FETCH_COMPLETED, {
-            registrationId: capturedId!,
+            registrationId: id,
             assets: ['/video.mp4', '/audio.mp3'],
             written: ['/video.mp4', '/audio.mp3'],
             failedOrSkipped: [],
         });
         const result = await p;
-        expect(result.registrationId).toBe(capturedId);
+        expect(result.registrationId).toBe(id);
         expect(result.assets).toEqual(['/video.mp4', '/audio.mp3']);
         expect(result.written).toEqual(['/video.mp4', '/audio.mp3']);
         expect(result.failedOrSkipped).toEqual([]);
@@ -143,24 +154,24 @@ describe('startDownloadAssetsToOpfs', () => {
 
     it('rejects with reason "fail" when FAILED message received', async () => {
         const { startDownloadAssetsToOpfs } = await getModule();
-        const p = startDownloadAssetsToOpfs({ assets: ['/a'] });
-        await new Promise<void>((r) => setTimeout(r, 50));
-        fireMessage(OPFS_MSG_BACKGROUND_FETCH_FAILED, { registrationId: capturedId! });
-        await expect(p).rejects.toEqual({ registrationId: capturedId, reason: 'fail' });
+        const p = startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a'] });
+        const id = await waitForCapturedId();
+        fireMessage(OPFS_MSG_BACKGROUND_FETCH_FAILED, { registrationId: id });
+        await expect(p).rejects.toEqual({ registrationId: id, reason: 'fail' });
     });
 
     it('rejects with reason "abort" when ABORTED message received', async () => {
         const { startDownloadAssetsToOpfs } = await getModule();
-        const p = startDownloadAssetsToOpfs({ assets: ['/a'] });
-        await new Promise<void>((r) => setTimeout(r, 50));
-        fireMessage(OPFS_MSG_BACKGROUND_FETCH_ABORTED, { registrationId: capturedId! });
-        await expect(p).rejects.toEqual({ registrationId: capturedId, reason: 'abort' });
+        const p = startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a'] });
+        const id = await waitForCapturedId();
+        fireMessage(OPFS_MSG_BACKGROUND_FETCH_ABORTED, { registrationId: id });
+        await expect(p).rejects.toEqual({ registrationId: id, reason: 'abort' });
     });
 
     it('rejects when AbortSignal fires', async () => {
         const { startDownloadAssetsToOpfs } = await getModule();
         const controller = new AbortController();
-        const p = startDownloadAssetsToOpfs({ assets: ['/a'], signal: controller.signal });
+        const p = startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a'], signal: controller.signal });
         controller.abort();
         await expect(p).rejects.toMatchObject({ reason: 'abort' });
     });
@@ -169,7 +180,7 @@ describe('startDownloadAssetsToOpfs', () => {
         const bf = await import('@budarin/pluggable-serviceworker/client/background-fetch');
         vi.mocked(bf.isBackgroundFetchSupported).mockResolvedValueOnce(false);
         const { startDownloadAssetsToOpfs } = await getModule();
-        await expect(startDownloadAssetsToOpfs({ assets: ['/a'] })).rejects.toThrow(
+        await expect(startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a'] })).rejects.toThrow(
             'Background Fetch API is not supported'
         );
     });
@@ -180,14 +191,15 @@ describe('startDownloadAssetsToOpfs', () => {
         swFilterResponse = { include: ['*.mp4'] };
         const { startDownloadAssetsToOpfs } = await getModule();
         const p = startDownloadAssetsToOpfs({
+            folderName: 'test-cache',
             assets: ['/a.mp4', '/b.txt', '/c.mp4'],
         });
-        await new Promise<void>((r) => setTimeout(r, 50));
+        const id = await waitForCapturedId();
         expect(startBf).toHaveBeenCalledTimes(1);
         const [, , urls] = startBf.mock.calls[0];
         expect(urls).toEqual(['https://example.com/a.mp4', 'https://example.com/c.mp4']);
         fireMessage(OPFS_MSG_BACKGROUND_FETCH_COMPLETED, {
-            registrationId: capturedId!,
+            registrationId: id,
             assets: ['/a.mp4', '/c.mp4'],
             written: ['/a.mp4', '/c.mp4'],
             failedOrSkipped: [],
@@ -199,6 +211,7 @@ describe('startDownloadAssetsToOpfs', () => {
         swFilterResponse = { include: ['*.mp4'] };
         const { startDownloadAssetsToOpfs } = await getModule();
         const result = await startDownloadAssetsToOpfs({
+            folderName: 'test-cache',
             assets: ['/a.txt', '/b.txt'],
         });
         expect(result).toEqual({
@@ -214,26 +227,27 @@ describe('startDownloadAssetsToOpfs', () => {
         const { startDownloadAssetsToOpfs } = await getModule();
         const onFileWritten = vi.fn();
         const p = startDownloadAssetsToOpfs({
+            folderName: 'test-cache',
             assets: ['/a', '/b', '/c'],
             onFileWritten,
         });
-        await new Promise<void>((r) => setTimeout(r, 50));
+        const id = await waitForCapturedId();
         fireMessage(OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN, {
-            registrationId: capturedId!,
+            registrationId: id,
             asset: '/a',
             loadedAssets: ['/a'],
             totalCount: 3,
         });
         expect(onFileWritten).toHaveBeenCalledWith(['/a'], 3);
         fireMessage(OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN, {
-            registrationId: capturedId!,
+            registrationId: id,
             asset: '/b',
             loadedAssets: ['/a', '/b'],
             totalCount: 3,
         });
         expect(onFileWritten).toHaveBeenCalledWith(['/a', '/b'], 3);
         fireMessage(OPFS_MSG_BACKGROUND_FETCH_COMPLETED, {
-            registrationId: capturedId!,
+            registrationId: id,
             assets: ['/a', '/b', '/c'],
             written: ['/a', '/b', '/c'],
             failedOrSkipped: [],

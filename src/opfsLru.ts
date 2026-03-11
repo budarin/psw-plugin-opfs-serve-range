@@ -49,10 +49,10 @@ export async function getStorageEstimate(): Promise<StorageEstimate> {
 }
 
 /**
- * Лимит кеша в байтах: min(quota × maxCacheFraction, quota − usage).
+ * Лимит кеша в байтах для папки: min(quota × maxCacheFraction, quota − usage).
  */
-export function getCacheLimit(estimate: StorageEstimate): number {
-    const fraction = getMaxCacheFraction();
+export function getCacheLimit(estimate: StorageEstimate, folderName: string): number {
+    const fraction = getMaxCacheFraction(folderName);
     const byFraction = Math.floor(estimate.quota * fraction);
     const byAvailable = estimate.quota - estimate.usage;
     return Math.max(0, Math.min(byFraction, byAvailable));
@@ -145,6 +145,8 @@ export type EnsureSpaceResult =
     | { ok: false; reason: string };
 
 export interface EnsureSpaceOptions {
+    /** Имя папки — для расчёта лимита квоты (обязательно). */
+    folderName: string;
     /** Вызывается после успешной эвикции (список удалённых ключей). */
     onEvicted?: (keys: string[]) => void;
 }
@@ -156,11 +158,11 @@ export interface EnsureSpaceOptions {
 export async function ensureSpaceForWrite(
     dir: FileSystemDirectoryHandle,
     newFileSize: number,
-    options: EnsureSpaceOptions = {}
+    options: EnsureSpaceOptions
 ): Promise<EnsureSpaceResult> {
-    const { onEvicted } = options;
+    const { folderName, onEvicted } = options;
     const estimate = await getStorageEstimate();
-    const limit = getCacheLimit(estimate);
+    const limit = getCacheLimit(estimate, folderName);
     const { entries, totalSize } = await getEntriesForEviction(dir);
 
     const needToFree = Math.max(
@@ -182,7 +184,7 @@ export async function ensureSpaceForWrite(
 
     const keysToDelete = computeEvictionSet(entries, needToFree);
     await evictFiles(dir, keysToDelete);
-    await removeFromEvictionIndex(dir, keysToDelete);
+    await removeFromEvictionIndex(dir, keysToDelete, folderName);
     onEvicted?.(keysToDelete);
     return { ok: true, evictedKeys: keysToDelete };
 }

@@ -6,11 +6,19 @@
 
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import { getRangeCache } from './opfsRangeCache.js';
+import { getMetadataCache } from './opfsMetadataCache.js';
 
 export const EVICTION_INDEX_FILENAME = '_eviction_index.json';
 
 const LAST_ACCESSED_THROTTLE_MS = 5000;
+/** Минимальный интервал между записями индекса на диск (батчинг для снижения I/O). */
+const INDEX_WRITE_THROTTLE_MS = 5000;
+
 const lastAccessedUpdateByKey = new Map<string, number>();
+/** Время последней записи индекса по dir.name (для троттлинга записи). */
+const lastIndexWriteByDirName = new Map<string, number>();
+/** Таймер отложенной записи индекса по dir.name. */
+const indexFlushTimerByDirName = new Map<string, ReturnType<typeof setTimeout>>();
 
 export interface EvictionIndexEntry {
     key: string;
@@ -194,6 +202,12 @@ export async function registerFileInCache(
  * Сбрасывает in-memory кеш для каталога (после clearOpfsCache).
  */
 export function invalidateCacheForDir(folderName: string): void {
+    const timer = indexFlushTimerByDirName.get(folderName);
+    if (timer !== undefined) {
+        clearTimeout(timer);
+        indexFlushTimerByDirName.delete(folderName);
+    }
+    lastIndexWriteByDirName.delete(folderName);
     cacheByDirName.delete(folderName);
     cachePopulatedByDir.delete(folderName);
 }
@@ -230,8 +244,8 @@ export async function getEntriesForEviction(
 }
 
 /**
- * Обновляет lastAccessed для ключа в кеше и в индексе на диске (только evictable).
- * Троттлинг 5 с на ключ: при перемотке не пишем в индекс чаще раза в 5 с.
+ * Обновляет lastAccessed для ключа в кеше и (с троттлингом) в индексе на диске (только evictable).
+ * Троттлинг 5 с на ключ; запись на диск — не чаще раза в INDEX_WRITE_THROTTLE_MS, иначе отложенная запись через 5 с.
  */
 export async function updateEvictionIndexLastAccessed(
     dir: FileSystemDirectoryHandle,
@@ -250,8 +264,32 @@ export async function updateEvictionIndexLastAccessed(
             return;
         }
         entry.lastAccessed = lastAccessed;
-        await writeIndexRaw(dir, getEvictableEntriesFromCache(cache));
         lastAccessedUpdateByKey.set(key, lastAccessed);
+
+        const dirName = dir.name;
+        const now = Date.now();
+        const lastWrite = lastIndexWriteByDirName.get(dirName) ?? 0;
+
+        if (now - lastWrite >= INDEX_WRITE_THROTTLE_MS) {
+            const timer = indexFlushTimerByDirName.get(dirName);
+            if (timer !== undefined) {
+                clearTimeout(timer);
+                indexFlushTimerByDirName.delete(dirName);
+            }
+            await writeIndexRaw(dir, getEvictableEntriesFromCache(cache));
+            lastIndexWriteByDirName.set(dirName, now);
+        } else if (!indexFlushTimerByDirName.has(dirName)) {
+            const timer = setTimeout(() => {
+                indexFlushTimerByDirName.delete(dirName);
+                runWithLock(async () => {
+                    await populateCacheUnlocked(dir);
+                    const c = getCache(dir);
+                    await writeIndexRaw(dir, getEvictableEntriesFromCache(c));
+                    lastIndexWriteByDirName.set(dirName, Date.now());
+                });
+            }, INDEX_WRITE_THROTTLE_MS);
+            indexFlushTimerByDirName.set(dirName, timer);
+        }
     });
 }
 
@@ -278,13 +316,18 @@ export async function addToEvictionIndex(
  */
 export async function removeFromEvictionIndex(
     dir: FileSystemDirectoryHandle,
-    keys: string[]
+    keys: string[],
+    folderName: string
 ): Promise<void> {
     if (keys.length === 0) {
         return;
     }
     const set = new Set(keys);
-    const rangeCache = getRangeCache();
+    for (const k of set) {
+        lastAccessedUpdateByKey.delete(k);
+    }
+    getMetadataCache(folderName)?.invalidateKeys(set);
+    const rangeCache = getRangeCache(folderName);
     if (rangeCache !== null) {
         for (const key of set) {
             rangeCache.invalidateForKey(key);

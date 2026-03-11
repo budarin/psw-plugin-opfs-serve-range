@@ -203,19 +203,19 @@ export async function getBackgroundFetchFilter(): Promise<{
 
 /**
  * Фильтрует assets (pathname'ы) по include/exclude (те же правила, что в opfsBackgroundFetch).
- * Origin для построения полного URL (по умолчанию location.origin).
  */
 export function filterAssetsForOpfs(
     assets: string[],
     include?: string[],
-    exclude?: string[],
-    origin?: string
+    exclude?: string[]
 ): string[] {
-    const base = origin ?? (typeof location !== 'undefined' ? location.origin : 'https://example.com');
-    return assets.filter((p) => shouldProcessFile(new URL(p, base).href, include, exclude));
+    const origin = typeof location !== 'undefined' ? location.origin : 'https://example.com';
+    return assets.filter((p) => shouldProcessFile(new URL(p, origin).href, include, exclude));
 }
 
-async function getOpfsCacheDirOrUndefined(): Promise<FileSystemDirectoryHandle | undefined> {
+async function getOpfsCacheDirOrUndefined(
+    folderName: string
+): Promise<FileSystemDirectoryHandle | undefined> {
     if (
         typeof navigator === 'undefined' ||
         navigator?.storage == null ||
@@ -225,7 +225,7 @@ async function getOpfsCacheDirOrUndefined(): Promise<FileSystemDirectoryHandle |
     }
     const root = await getRoot();
     try {
-        return await getOpfsDir(root, false);
+        return await getOpfsDir(root, false, folderName);
     } catch {
         return undefined;
     }
@@ -238,8 +238,10 @@ async function readMetadataFromFile(
     return metadata ?? undefined;
 }
 
-export async function listOpfsCachedResources(): Promise<OpfsCachedResource[]> {
-    const dir = await getOpfsCacheDirOrUndefined();
+export async function listOpfsCachedResources(
+    folderName: string
+): Promise<OpfsCachedResource[]> {
+    const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
         return [];
     }
@@ -271,8 +273,11 @@ export async function listOpfsCachedResources(): Promise<OpfsCachedResource[]> {
     return results.filter((r): r is OpfsCachedResource => r !== null);
 }
 
-export async function hasInOpfsCache(url: string): Promise<boolean> {
-    const dir = await getOpfsCacheDirOrUndefined();
+export async function hasInOpfsCache(
+    url: string,
+    folderName: string
+): Promise<boolean> {
+    const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
         return false;
     }
@@ -285,8 +290,11 @@ export async function hasInOpfsCache(url: string): Promise<boolean> {
     }
 }
 
-export async function deleteFromOpfsCache(url: string): Promise<void> {
-    const dir = await getOpfsCacheDirOrUndefined();
+export async function deleteFromOpfsCache(
+    url: string,
+    folderName: string
+): Promise<void> {
+    const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
         return;
     }
@@ -319,7 +327,9 @@ export interface DownloadAssetsToOpfsRejected {
 
 /** Опции для startDownloadAssetsToOpfs. */
 export interface StartDownloadAssetsToOpfsOptions {
-    /** Assets (pathname'ы same-origin). Полные URL строятся от location.origin. Фильтр include/exclude запрашивается у SW. */
+    /** Имя папки OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
+    folderName: string;
+    /** Assets (pathname'ы). Фильтр include/exclude запрашивается у SW. */
     assets: string[];
     /** Заголовок для UI Background Fetch. */
     title?: string;
@@ -341,16 +351,11 @@ export interface StartDownloadAssetsToOpfsOptions {
 export function startDownloadAssetsToOpfs(
     options: StartDownloadAssetsToOpfsOptions
 ): Promise<DownloadAssetsToOpfsResult> {
-    const { assets, title, downloadTotal, onProgress, onFileWritten, signal } = options;
+    const { folderName, assets, title, downloadTotal, onProgress, onFileWritten, signal } = options;
     const filteredOut: string[] = [];
 
     return getBackgroundFetchFilter().then(async (filter) => {
-        const assetsToUse = filterAssetsForOpfs(
-            assets,
-            filter.include,
-            filter.exclude,
-            typeof location !== 'undefined' ? location.origin : undefined
-        );
+        const assetsToUse = filterAssetsForOpfs(assets, filter.include, filter.exclude);
         assets.forEach((p) => {
             if (!assetsToUse.includes(p)) {
                 filteredOut.push(p);
@@ -401,7 +406,7 @@ export function startDownloadAssetsToOpfs(
         }
         const assetsAfterProgress = assetsToUse.filter((p) => !pathnamesInProgress.has(p));
 
-        const cached = await listOpfsCachedResources();
+        const cached = await listOpfsCachedResources(folderName);
         const cachedPathnames = new Set(cached.map((r) => new URL(r.url).pathname));
         const assetsToFetch = assetsAfterProgress.filter((p) => !cachedPathnames.has(p));
 

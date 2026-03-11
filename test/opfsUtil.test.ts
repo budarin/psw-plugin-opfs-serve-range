@@ -1,0 +1,169 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+    emitDroppedPatternWarnings,
+    getGlobalMaxCacheFraction,
+    setGlobalMaxCacheFraction,
+    getMaxCacheFraction,
+    normalizePatternList,
+    registerFolderConfig,
+    resetFolderRegistryForTests,
+    shouldProcessFile,
+} from '../src/opfsUtil.ts';
+
+beforeEach(() => {
+    resetFolderRegistryForTests();
+});
+
+describe('global max cache fraction', () => {
+    it('defaults to 0.5', () => {
+        expect(getGlobalMaxCacheFraction()).toBe(0.5);
+    });
+
+    it('allows setting valid value in (0, 1]', () => {
+        setGlobalMaxCacheFraction(0.8);
+        expect(getGlobalMaxCacheFraction()).toBe(0.8);
+        setGlobalMaxCacheFraction(1);
+        expect(getGlobalMaxCacheFraction()).toBe(1);
+    });
+
+    it('throws on invalid value', () => {
+        expect(() => setGlobalMaxCacheFraction(0)).toThrow('globalMaxCacheFraction');
+        expect(() => setGlobalMaxCacheFraction(1.5)).toThrow('globalMaxCacheFraction');
+        expect(() => setGlobalMaxCacheFraction(-0.1)).toThrow('globalMaxCacheFraction');
+    });
+});
+
+describe('getMaxCacheFraction with proportional scaling', () => {
+    it('returns default for unregistered folder', () => {
+        expect(getMaxCacheFraction('unknown')).toBe(0.5);
+    });
+
+    it('returns stored fraction when sum <= global limit', () => {
+        registerFolderConfig('folder-a', { maxCacheFraction: 0.3 });
+        expect(getMaxCacheFraction('folder-a')).toBe(0.3);
+        registerFolderConfig('folder-b', { maxCacheFraction: 0.2 });
+        expect(getMaxCacheFraction('folder-a')).toBe(0.3);
+        expect(getMaxCacheFraction('folder-b')).toBe(0.2);
+    });
+
+    it('returns proportionally scaled fraction when sum > global limit', () => {
+        setGlobalMaxCacheFraction(0.5);
+        registerFolderConfig('video', { maxCacheFraction: 0.5 });
+        registerFolderConfig('audio', { maxCacheFraction: 0.5 });
+        // sum = 1.0 > 0.5 → scale factor 0.5/1.0 = 0.5 → each gets 0.25
+        expect(getMaxCacheFraction('video')).toBe(0.25);
+        expect(getMaxCacheFraction('audio')).toBe(0.25);
+    });
+
+    it('preserves ratios when scaling (sum 2.5, global 0.5)', () => {
+        setGlobalMaxCacheFraction(0.5);
+        registerFolderConfig('a', { maxCacheFraction: 0.5 });
+        registerFolderConfig('b', { maxCacheFraction: 1.0 });
+        registerFolderConfig('c', { maxCacheFraction: 1.0 });
+        // sum = 2.5, scale = 0.5/2.5 = 0.2 → a: 0.1, b: 0.2, c: 0.2
+        expect(getMaxCacheFraction('a')).toBe(0.1);
+        expect(getMaxCacheFraction('b')).toBe(0.2);
+        expect(getMaxCacheFraction('c')).toBe(0.2);
+    });
+});
+
+describe('normalizePatternList', () => {
+    const baseOrigin = 'https://example.com';
+
+    it('returns undefined/empty list and empty dropped for undefined/empty input', () => {
+        const r1 = normalizePatternList(undefined, baseOrigin);
+        expect(r1.list).toBeUndefined();
+        expect(r1.dropped).toEqual({ crossOrigin: [], invalid: [] });
+        const r2 = normalizePatternList([], baseOrigin);
+        expect(r2.list).toEqual([]);
+        expect(r2.dropped).toEqual({ crossOrigin: [], invalid: [] });
+    });
+
+    it('leaves pathnames and globs as-is', () => {
+        const r = normalizePatternList(['/video/*', '*.mp4'], baseOrigin);
+        expect(r.list).toEqual(['/video/*', '*.mp4']);
+        expect(r.dropped.crossOrigin).toHaveLength(0);
+    });
+
+    it('converts same-origin full URL to pathname', () => {
+        const r = normalizePatternList(['https://example.com/assets/video.mp4'], baseOrigin);
+        expect(r.list).toEqual(['/assets/video.mp4']);
+    });
+
+    it('drops cross-origin full URLs into dropped.crossOrigin', () => {
+        const r = normalizePatternList(['https://other.com/video.mp4'], baseOrigin);
+        expect(r.list).toEqual([]);
+        expect(r.dropped.crossOrigin).toEqual(['https://other.com/video.mp4']);
+    });
+
+    it('keeps pathnames and same-origin, drops cross-origin into dropped', () => {
+        const r = normalizePatternList(
+            ['/local/*', 'https://example.com/a', 'https://evil.com/b', '*.mp4'],
+            baseOrigin
+        );
+        expect(r.list).toEqual(['/local/*', '/a', '*.mp4']);
+        expect(r.dropped.crossOrigin).toEqual(['https://evil.com/b']);
+    });
+
+    it('puts invalid URLs into dropped.invalid', () => {
+        const r = normalizePatternList(['https://other.com/x', 'http://['], baseOrigin);
+        expect(r.dropped.crossOrigin).toEqual(['https://other.com/x']);
+        expect(r.dropped.invalid).toContain('http://[');
+    });
+});
+
+describe('emitDroppedPatternWarnings', () => {
+    it('calls logger.warn for each dropped cross-origin and invalid, then clears arrays', () => {
+        const warn = vi.fn();
+        const dropped = {
+            crossOrigin: ['https://other.com/a'],
+            invalid: ['bad://url'],
+        };
+        emitDroppedPatternWarnings(dropped, { warn });
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('dropped cross-origin'));
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('dropped invalid URL'));
+        expect(dropped.crossOrigin).toHaveLength(0);
+        expect(dropped.invalid).toHaveLength(0);
+    });
+});
+
+describe('shouldProcessFile', () => {
+    const origin = 'https://example.com';
+    let originalSelf: typeof globalThis.self;
+
+    beforeEach(() => {
+        originalSelf = globalThis.self;
+        (globalThis as unknown as { self: { origin: string } }).self = { origin };
+    });
+    afterEach(() => {
+        (globalThis as unknown as { self: typeof originalSelf }).self = originalSelf;
+    });
+
+    function runWithSelfRestore(fn: () => void): void {
+        try {
+            fn();
+        } finally {
+            (globalThis as unknown as { self: typeof originalSelf }).self = originalSelf;
+        }
+    }
+
+    it('returns false for cross-origin URL (full URL from other origin)', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://evil.com/video/1.mp4', ['/video/*'], undefined)).toBe(false);
+            expect(shouldProcessFile('https://evil.com/video/1.mp4', undefined, undefined)).toBe(false);
+        });
+    });
+
+    it('returns true for same-origin URL matching include', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/video/1.mp4', ['/video/*'], undefined)).toBe(true);
+        });
+    });
+
+    it('returns false for same-origin URL matching exclude', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/private/x', ['*'], ['/private/*'])).toBe(false);
+        });
+    });
+});
