@@ -4,6 +4,7 @@
  * Инвалидация при эвикции (removeFromEvictionIndex) и при clearOpfsCache.
  */
 
+import type { FolderName, OpfsKey } from './types.js';
 import { LRUCache } from 'lru-cache';
 
 export interface OpfsMetadataCacheEntry {
@@ -19,17 +20,17 @@ const DEFAULT_MAX_ENTRIES = 500;
 export interface MetadataCacheLimits {
     maxEntries?: number;
     /** Вызывается при эвикции ключа из кеша (например, инвалидация range cache для этого ключа). */
-    onEvictKey?: (key: string) => void;
+    onEvictKey?: (key: OpfsKey) => void;
 }
 
-const cacheByFolder = new Map<string, MetadataCacheImpl>();
+const cacheByFolder = new Map<FolderName, MetadataCacheImpl>();
 
 export class MetadataCacheImpl {
     private readonly cache: LRUCache<string, OpfsMetadataCacheEntry>;
 
     constructor(limits: MetadataCacheLimits = {}) {
         const maxEntries = Math.max(1, limits.maxEntries ?? DEFAULT_MAX_ENTRIES);
-        this.cache = new LRUCache<string, OpfsMetadataCacheEntry>({
+        this.cache = new LRUCache<OpfsKey, OpfsMetadataCacheEntry>({
             max: maxEntries,
             ...(limits.onEvictKey !== undefined && {
                 dispose: (_value, key) => limits.onEvictKey!(key),
@@ -37,15 +38,15 @@ export class MetadataCacheImpl {
         });
     }
 
-    get(key: string): OpfsMetadataCacheEntry | undefined {
+    get(key: OpfsKey): OpfsMetadataCacheEntry | undefined {
         return this.cache.get(key);
     }
 
-    set(key: string, entry: OpfsMetadataCacheEntry): void {
+    set(key: OpfsKey, entry: OpfsMetadataCacheEntry): void {
         this.cache.set(key, entry);
     }
 
-    invalidateKeys(keys: Iterable<string>): void {
+    invalidateKeys(keys: Iterable<OpfsKey>): void {
         for (const key of keys) {
             this.cache.delete(key);
         }
@@ -57,7 +58,7 @@ export class MetadataCacheImpl {
 }
 
 export function getOrCreateMetadataCache(
-    folderName: string,
+    folderName: FolderName,
     limits: MetadataCacheLimits = {}
 ): MetadataCacheImpl {
     let cache = cacheByFolder.get(folderName);
@@ -68,6 +69,6 @@ export function getOrCreateMetadataCache(
     return cache;
 }
 
-export function getMetadataCache(folderName: string): MetadataCacheImpl | null {
+export function getMetadataCache(folderName: FolderName): MetadataCacheImpl | null {
     return cacheByFolder.get(folderName) ?? null;
 }

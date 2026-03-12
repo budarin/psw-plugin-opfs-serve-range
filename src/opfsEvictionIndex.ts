@@ -4,6 +4,7 @@
  * Все операции с индексом сериализованы через in-memory lock.
  */
 
+import type { FolderName, OpfsKey } from './types.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
@@ -21,7 +22,7 @@ const lastIndexWriteByDirName = new Map<string, number>();
 const indexFlushTimerByDirName = new Map<string, ReturnType<typeof setTimeout>>();
 
 export interface EvictionIndexEntry {
-    key: string;
+    key: OpfsKey;
     size: number;
     lastAccessed: number;
 }
@@ -187,7 +188,7 @@ async function populateCacheUnlocked(
  */
 export async function registerFileInCache(
     dir: FileSystemDirectoryHandle,
-    key: string,
+    key: OpfsKey,
     size: number,
     evictable: boolean,
     lastAccessed: number
@@ -201,7 +202,7 @@ export async function registerFileInCache(
 /**
  * Сбрасывает in-memory кеш для каталога (после clearOpfsCache).
  */
-export function invalidateCacheForDir(folderName: string): void {
+export function invalidateCacheForDir(folderName: FolderName): void {
     const timer = indexFlushTimerByDirName.get(folderName);
     if (timer !== undefined) {
         clearTimeout(timer);
@@ -249,7 +250,7 @@ export async function getEntriesForEviction(
  */
 export async function updateEvictionIndexLastAccessed(
     dir: FileSystemDirectoryHandle,
-    key: string,
+    key: OpfsKey,
     lastAccessed: number
 ): Promise<void> {
     const last = lastAccessedUpdateByKey.get(key);
@@ -298,7 +299,7 @@ export async function updateEvictionIndexLastAccessed(
  */
 export async function addToEvictionIndex(
     dir: FileSystemDirectoryHandle,
-    key: string,
+    key: OpfsKey,
     size: number,
     lastAccessed: number
 ): Promise<void> {
@@ -316,8 +317,8 @@ export async function addToEvictionIndex(
  */
 export async function removeFromEvictionIndex(
     dir: FileSystemDirectoryHandle,
-    keys: string[],
-    folderName: string
+    keys: OpfsKey[],
+    folderName: FolderName
 ): Promise<void> {
     if (keys.length === 0) {
         return;

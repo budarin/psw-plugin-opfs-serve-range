@@ -2,6 +2,7 @@
  * Общие утилиты: glob, папка плагина в OPFS, очистка, реестр папок по плагинам.
  */
 
+import type { FolderName, UrlString } from './types.js';
 import { invalidateCacheForDir } from './opfsEvictionIndex.js';
 import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
@@ -52,7 +53,7 @@ const folderRegistry = new Map<string, Required<FolderCacheConfig>>();
  * Разбор URL без throw: возвращает URL или null. При наличии URL.parse использует его, иначе try/catch с new URL.
  * Позволяет потом упростить код, убрав try/catch при переходе на среды с URL.parse (MDN: Newly available).
  */
-function parseUrlSafe(url: string, base?: string): URL | null {
+function parseUrlSafe(url: UrlString, base?: string): URL | null {
     const parse = (URL as { parse?: (url: string, base?: string) => URL | null }).parse;
     if (typeof parse === 'function') {
         return base !== undefined ? parse(url, base) : parse(url);
@@ -146,7 +147,7 @@ export function emitDroppedPatternWarnings(
 }
 
 export function registerFolderConfig(
-    folderName: string,
+    folderName: FolderName,
     config: FolderCacheConfig = {}
 ): void {
     if (typeof folderName !== 'string' || folderName.trim() === '') {
@@ -191,7 +192,7 @@ export function isOpfsAvailable(): boolean {
 }
 
 /** Доля квоты для папки. Если сумма долей всех папок > глобального лимита — возвращается пропорционально уменьшенная доля. */
-export function getMaxCacheFraction(folderName: string): number {
+export function getMaxCacheFraction(folderName: FolderName): number {
     const c = folderRegistry.get(folderName);
     const stored = c?.maxCacheFraction ?? DEFAULT_MAX_CACHE_FRACTION;
     let sum = 0;
@@ -205,13 +206,13 @@ export function getMaxCacheFraction(folderName: string): number {
 }
 
 /** Лимит размера in-memory кеша range-ответов для папки. */
-export function getRangeCacheMaxSizeBytes(folderName: string): number {
+export function getRangeCacheMaxSizeBytes(folderName: FolderName): number {
     const c = folderRegistry.get(folderName);
     return c?.rangeCacheMaxSizeBytes ?? DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES;
 }
 
 /** Лимит количества записей in-memory кеша range-ответов для папки. */
-export function getRangeCacheMaxEntries(folderName: string): number {
+export function getRangeCacheMaxEntries(folderName: FolderName): number {
     const c = folderRegistry.get(folderName);
     return c?.rangeCacheMaxEntries ?? DEFAULT_RANGE_CACHE_MAX_ENTRIES;
 }
@@ -236,7 +237,7 @@ function getGlobRegex(pattern: string): RegExp {
     return regex;
 }
 
-export function matchesGlob(url: string, pattern: string): boolean {
+export function matchesGlob(url: UrlString, pattern: string): boolean {
     const u = parseUrlSafe(url, 'https://example.com');
     if (u === null) return false;
     return getGlobRegex(pattern).test(u.pathname);
@@ -246,7 +247,7 @@ export function matchesGlob(url: string, pattern: string): boolean {
  * Определяет, можно ли эвиктить ресурс по pinned-паттернам.
  * URL, совпадающий с pinned, не эвиктится (evictable: false).
  */
-export function isEvictable(url: string, pinned?: string[]): boolean {
+export function isEvictable(url: UrlString, pinned?: string[]): boolean {
     return pinned ? !shouldProcessFile(url, pinned) : true;
 }
 
@@ -255,7 +256,7 @@ export function isEvictable(url: string, pinned?: string[]): boolean {
  * В SW используется self.origin; в иных средах нужен мок self.
  */
 export function shouldProcessFile(
-    url: string,
+    url: UrlString,
     include?: string[],
     exclude?: string[]
 ): boolean {
@@ -298,7 +299,7 @@ const dirCacheByFolder = new Map<string, FileSystemDirectoryHandle>();
 export async function getOpfsDir(
     root: FileSystemDirectoryHandle,
     create: boolean,
-    folderName: string
+    folderName: FolderName
 ): Promise<FileSystemDirectoryHandle> {
     const cached = dirCacheByFolder.get(folderName);
     if (cached !== undefined) {
@@ -313,7 +314,7 @@ export async function getOpfsDir(
  * Сбрасывает все in-memory кэши для папки (индекс эвикции, metadata, range, хэндл директории).
  * Вызывать после ручного удаления папки в OPFS или при NotFoundError из-за рассинхрона.
  */
-export function invalidateAllCachesForFolder(folderName: string): void {
+export function invalidateAllCachesForFolder(folderName: FolderName): void {
     invalidateCacheForDir(folderName);
     getRangeCache(folderName)?.invalidateAll();
     getMetadataCache(folderName)?.invalidateAll();
@@ -325,7 +326,7 @@ export function invalidateAllCachesForFolder(folderName: string): void {
  *
  * @param folderName — имя папки (обязательно)
  */
-export async function clearOpfsCache(folderName: string): Promise<void> {
+export async function clearOpfsCache(folderName: FolderName): Promise<void> {
     invalidateAllCachesForFolder(folderName);
     const root = await getRoot();
     try {

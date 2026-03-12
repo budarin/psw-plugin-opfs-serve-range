@@ -7,6 +7,7 @@
 import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
+import type { FolderName } from './types.js';
 import {
     emitDroppedPatternWarnings,
     getOpfsDir,
@@ -40,7 +41,7 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
     /**
      * Имя папки в OPFS для этого кеша (обязательно). Должно совпадать с folderName в opfsServeRange/opfsBackgroundFetch, если они обслуживают тот же кеш.
      */
-    folderName: string;
+    folderName: FolderName;
     /**
      * Порядок: должен быть после opfsServeRange (например -10).
      */
@@ -77,7 +78,7 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
  */
 async function backgroundFullFetchToOpfs(
     url: string,
-    folderName: string,
+    folderName: FolderName,
     logger: Logger,
     enableLogging: boolean,
     fetchPassthrough: (request: Request) => Promise<Response>,

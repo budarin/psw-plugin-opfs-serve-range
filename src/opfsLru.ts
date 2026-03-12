@@ -3,6 +3,7 @@
  * Для эвикции используется индекс _eviction_index.json (только evictable); при отсутствии/повреждении пересобирается.
  */
 
+import type { FolderName, OpfsKey, UrlString } from './types.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import { getMaxCacheFraction } from './opfsUtil.js';
 import {
@@ -13,7 +14,7 @@ import {
 } from './opfsEvictionIndex.js';
 
 export interface CacheFileEntry {
-    key: string;
+    key: OpfsKey;
     /** Размер файла на диске (тело + футер). */
     size: number;
     lastAccessed: number;
@@ -27,13 +28,13 @@ export interface StorageEstimate {
     usage: number;
 }
 
-const skipList = new Set<string>();
+const skipList = new Set<UrlString>();
 
-export function isInSkipList(url: string): boolean {
+export function isInSkipList(url: UrlString): boolean {
     return skipList.has(url);
 }
 
-export function addToSkipList(url: string): void {
+export function addToSkipList(url: UrlString): void {
     skipList.add(url);
 }
 
@@ -51,7 +52,7 @@ export async function getStorageEstimate(): Promise<StorageEstimate> {
 /**
  * Лимит кеша в байтах для папки: min(quota × maxCacheFraction, quota − usage).
  */
-export function getCacheLimit(estimate: StorageEstimate, folderName: string): number {
+export function getCacheLimit(estimate: StorageEstimate, folderName: FolderName): number {
     const fraction = getMaxCacheFraction(folderName);
     const byFraction = Math.floor(estimate.quota * fraction);
     const byAvailable = estimate.quota - estimate.usage;
@@ -107,12 +108,12 @@ export function getTotalCacheSize(entries: CacheFileEntry[]): number {
 export function computeEvictionSet(
     entries: EvictionIndexEntry[],
     needToFree: number
-): string[] {
+): OpfsKey[] {
     if (needToFree <= 0) {
         return [];
     }
     const sorted = [...entries].sort((a, b) => a.lastAccessed - b.lastAccessed);
-    const toDelete: string[] = [];
+    const toDelete: OpfsKey[] = [];
     let freed = 0;
     for (const e of sorted) {
         if (freed >= needToFree) {
@@ -129,7 +130,7 @@ export function computeEvictionSet(
  */
 export async function evictFiles(
     dir: FileSystemDirectoryHandle,
-    keys: string[]
+    keys: OpfsKey[]
 ): Promise<void> {
     await Promise.all(
         keys.map((key) =>
@@ -141,19 +142,19 @@ export async function evictFiles(
 }
 
 export type EnsureSpaceResult =
-    | { ok: true; evictedKeys?: string[] }
+    | { ok: true; evictedKeys?: OpfsKey[] }
     | { ok: false; reason: string };
 
 export interface EnsureSpaceOptions {
     /** Имя папки — для расчёта лимита квоты (обязательно). */
-    folderName: string;
+    folderName: FolderName;
     /** Вызывается после успешной эвикции (список удалённых ключей). */
-    onEvicted?: (keys: string[]) => void;
+    onEvicted?: (keys: OpfsKey[]) => void;
     /**
      * Ключ файла, который будет перезаписан этой операцией. Не удалять при эвикции:
      * браузер может использовать тот же файл как источник response.body в Background Fetch.
      */
-    excludeKeyFromEviction?: string;
+    excludeKeyFromEviction?: OpfsKey;
 }
 
 /**

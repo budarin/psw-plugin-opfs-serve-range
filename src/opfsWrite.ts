@@ -5,6 +5,7 @@
 
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
 
+import type { FolderName, OpfsKey, UrlString } from './types.js';
 import {
     OPFS_META_FOOTER_LENGTH,
     MEGABYTE,
@@ -34,13 +35,13 @@ import {
 
 export interface WriteToOpfsOptions {
     /** Имя папки OPFS — для расчёта лимита при ensureSpaceForWrite и при QuotaExceeded (обязательно). */
-    folderName: string;
+    folderName: FolderName;
     /** URL ресурса — для оповещений и skip list при потоке без размера. */
-    url?: string;
+    url?: UrlString;
     /** Известный размер тела (Content-Length). Если задан, перед записью проверяется лимит и при необходимости выполняется LRU-эвикция. */
     knownSize?: number;
     /** Ключ файла в OPFS — при эвикции не удалять этот ключ (перезапись; иначе можно удалить источник response.body). */
-    excludeKeyFromEviction?: string;
+    excludeKeyFromEviction?: OpfsKey;
 }
 
 /**
@@ -57,7 +58,7 @@ export interface WriteToOpfsOptions {
  */
 export async function writeToOpfs(
     dir: FileSystemDirectoryHandle,
-    key: string,
+    key: OpfsKey,
     bodyStream: ReadableStream<Uint8Array>,
     metadata: OpfsMetadata,
     options: WriteToOpfsOptions
@@ -164,7 +165,7 @@ export async function writeToOpfs(
  * Если Content-Length отсутствует или невалиден, возвращает size: 0 — при записи через writeToOpfs
  * фактический размер подставится из подсчитанного тела (bodySize).
  */
-export function metadataFromResponse(response: Response, url: string): OpfsMetadata {
+export function metadataFromResponse(response: Response, url: UrlString): OpfsMetadata {
     const contentLength = response.headers.get('Content-Length');
     const parsed = contentLength ? parseInt(contentLength, 10) : 0;
     const size =

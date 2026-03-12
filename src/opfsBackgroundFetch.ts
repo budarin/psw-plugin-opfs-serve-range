@@ -5,6 +5,7 @@
 
 import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-serviceworker';
 import { notifyClients } from '@budarin/pluggable-serviceworker/utils';
+import type { FolderName } from './types.js';
 import {
     emitDroppedPatternWarnings,
     getOpfsDir,
@@ -95,7 +96,7 @@ export interface OpfsBackgroundFetchOptions {
     /**
      * Имя папки в OPFS для этого кеша (обязательно). Должно совпадать с folderName в opfsServeRange/opfsRangeFromNetworkAndCache, если они обслуживают тот же кеш.
      */
-    folderName: string;
+    folderName: FolderName;
     /**
      * Порядок выполнения (по умолчанию 0).
      */

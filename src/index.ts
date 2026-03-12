@@ -6,6 +6,7 @@
 
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 
+import type { FolderName } from './types.js';
 import { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 import { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
 import { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
@@ -81,10 +82,11 @@ export type { WriteToOpfsOptions } from './opfsWrite.js';
 
 export { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 export type { OpfsServeRangeOptions, ServeOptionsFromFactory } from './opfsServeRange.js';
+export type { Pathname, UrlString, OpfsKey, FolderName } from './types.js';
 
 /** Общие опции для пары плагинов (serve + BF или serve + network+cache). */
 export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
-    folderName: string;
+    folderName: FolderName;
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;
@@ -104,7 +106,7 @@ export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
 
 /** Общие опции для пары плагинов (serve + network+cache). */
 export interface CreateOpfsServeAndNetworkCachePluginsOptions {
-    folderName: string;
+    folderName: FolderName;
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;

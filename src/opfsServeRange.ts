@@ -7,6 +7,7 @@ import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-servicewo
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
+import type { FolderName } from './types.js';
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     emitDroppedPatternWarnings,
@@ -44,7 +45,7 @@ export interface OpfsServeRangeOptions {
     /**
      * Имя папки в OPFS для этого кеша (обязательно). Одна папка — один набор настроек; при повторной регистрации того же имени конфиг должен совпадать.
      */
-    folderName: string;
+    folderName: FolderName;
     /**
      * Порядок выполнения плагина (по умолчанию -15).
      */
@@ -91,7 +92,7 @@ export interface OpfsServeRangeOptions {
 
 /** Опции для сборки аргумента opfsServeRange из фабрик (подмножество опций пары плагинов, без pinned). */
 export interface ServeOptionsFromFactory {
-    folderName: string;
+    folderName: FolderName;
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;

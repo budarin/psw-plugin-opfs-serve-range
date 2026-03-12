@@ -3,6 +3,8 @@
  * Используется плагином отдачи (serve) и утилитами/плагинами записи.
  */
 
+import type { UrlString } from './types.js';
+
 /** Имя папки в корне OPFS для всех файлов этого плагина. Другие плагины не должны сюда писать. */
 export const OPFS_FOLDER_NAME = 'range-requests-cache';
 
@@ -21,7 +23,7 @@ export const GIGABYTE = 1024 * 1024 * 1024;
 /** Метаданные ресурса (JSON в конце файла). */
 export interface OpfsMetadata {
     /** Исходный URL ресурса, для которого создан этот файл. */
-    url: string;
+    url: UrlString;
     size: number;
     type?: string;
     etag?: string;

@@ -4,6 +4,7 @@
  * Инвалидация по ключу (при эвикции файла из OPFS) и invalidateAll (при clearOpfsCache).
  */
 
+import type { FolderName, OpfsKey } from './types.js';
 import { LRUCache } from 'lru-cache';
 
 /** Метаданные для 206 (источник — metadata cache, не range cache). Экспорт для типов. */
@@ -28,9 +29,9 @@ export interface RangeCacheLimits {
     maxEntries: number;
 }
 
-const cacheByFolder = new Map<string, RangeCacheImpl>();
+const cacheByFolder = new Map<FolderName, RangeCacheImpl>();
 
-function cacheKey(opfsKey: string, start: number, end: number): string {
+function cacheKey(opfsKey: OpfsKey, start: number, end: number): string {
     return `${opfsKey}|${start}|${end}`;
 }
 
@@ -50,7 +51,7 @@ export class RangeCacheImpl {
         });
     }
 
-    get(opfsKey: string, start: number, end: number): RangeCacheBlobHit | undefined {
+    get(opfsKey: OpfsKey, start: number, end: number): RangeCacheBlobHit | undefined {
         const key = cacheKey(opfsKey, start, end);
         const entry = this.cache.get(key);
         if (entry === undefined) {
@@ -59,7 +60,7 @@ export class RangeCacheImpl {
         return { blob: entry.blob };
     }
 
-    set(opfsKey: string, start: number, end: number, blob: Blob): void {
+    set(opfsKey: OpfsKey, start: number, end: number, blob: Blob): void {
         const key = cacheKey(opfsKey, start, end);
         this.cache.set(key, {
             blob,
@@ -67,7 +68,7 @@ export class RangeCacheImpl {
         });
     }
 
-    invalidateForKey(opfsKey: string): void {
+    invalidateForKey(opfsKey: OpfsKey): void {
         for (const key of this.cache.keys()) {
             if (keyToOpfsKey(key) === opfsKey) {
                 this.cache.delete(key);
@@ -84,7 +85,7 @@ export class RangeCacheImpl {
  * Возвращает кеш range-ответов для папки. При первом вызове для folderName создаёт кеш с указанными limits.
  */
 export function getOrCreateRangeCache(
-    folderName: string,
+    folderName: FolderName,
     limits: RangeCacheLimits
 ): RangeCacheImpl {
     let cache = cacheByFolder.get(folderName);
@@ -98,6 +99,6 @@ export function getOrCreateRangeCache(
 /**
  * Возвращает кеш range-ответов для папки или null, если плагин с rangeCache для этой папки ещё не создавал кеш.
  */
-export function getRangeCache(folderName: string): RangeCacheImpl | null {
+export function getRangeCache(folderName: FolderName): RangeCacheImpl | null {
     return cacheByFolder.get(folderName) ?? null;
 }

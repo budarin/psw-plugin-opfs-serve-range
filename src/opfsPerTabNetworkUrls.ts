@@ -5,15 +5,17 @@
  * @see https://github.com/budarin/psw-plugin-serve-range-requests
  */
 
+import type { Pathname } from './types.js';
+
 const MAX_PATHNAMES_PER_CLIENT = 512;
 
 /** По clientId — pathname'ы, по которым этому клиенту уже отдавали ответ из сети (passthrough). */
-const urlsServedFromNetworkByClient = new Map<string, Set<string>>();
+const urlsServedFromNetworkByClient = new Map<string, Set<Pathname>>();
 
-function getOrCreateSetForClient(clientId: string): Set<string> {
+function getOrCreateSetForClient(clientId: string): Set<Pathname> {
     let set = urlsServedFromNetworkByClient.get(clientId);
     if (!set) {
-        set = new Set<string>();
+        set = new Set<Pathname>();
         urlsServedFromNetworkByClient.set(clientId, set);
     }
     if (set.size >= MAX_PATHNAMES_PER_CLIENT) {
@@ -29,7 +31,7 @@ function getOrCreateSetForClient(clientId: string): Set<string> {
  * Отмечает, что для данной вкладки (clientId) по pathname уже отдан ответ из сети.
  * Вызывать при возврате клиенту ответа, полученного через fetch (network).
  */
-export function addUrlServedFromNetwork(clientId: string, pathname: string): void {
+export function addUrlServedFromNetwork(clientId: string, pathname: Pathname): void {
     if (!clientId) {
         return;
     }
@@ -40,7 +42,7 @@ export function addUrlServedFromNetwork(clientId: string, pathname: string): voi
  * Возвращает true, если для данной вкладки по pathname уже отдавали ответ из сети.
  * В этом случае не отдавать из OPFS (passthrough), чтобы не переключать источник (Chromium bug).
  */
-export function isUrlServedFromNetworkForClient(clientId: string, pathname: string): boolean {
+export function isUrlServedFromNetworkForClient(clientId: string, pathname: Pathname): boolean {
     if (!clientId) {
         return false;
     }

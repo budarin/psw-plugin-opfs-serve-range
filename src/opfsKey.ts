@@ -3,14 +3,16 @@
  * Вынесено в отдельный модуль для устранения циклических зависимостей.
  */
 
-const urlToKeyCache = new Map<string, string>();
+import type { OpfsKey, UrlString } from './types.js';
+
+const urlToKeyCache = new Map<UrlString, OpfsKey>();
 
 /**
  * Вычисляет ключ файла в OPFS по URL: hex(SHA-256(URL)).
  * Результат кешируется в памяти на время жизни воркера — повторные запросы по одному URL не пересчитывают хеш.
  * Плагин кеширования в OPFS должен использовать ту же функцию для записи.
  */
-export async function urlToOpfsKey(url: string): Promise<string> {
+export async function urlToOpfsKey(url: UrlString): Promise<OpfsKey> {
     const cached = urlToKeyCache.get(url);
     if (cached !== undefined) {
         return cached;

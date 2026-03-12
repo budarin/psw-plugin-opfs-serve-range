@@ -28,6 +28,7 @@ import {
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
 } from '../opfsMessages.js';
+import type { FolderName, Pathname, UrlString } from '../types.js';
 import { getOpfsDir, getRoot, shouldProcessFile } from '../opfsUtil.js';
 import { getOpfsBackgroundFetchId } from './opfsBackgroundFetchId.js';
 import { readMetadataFromFileFooter, type OpfsMetadata } from '../opfsFormat.js';
@@ -51,31 +52,32 @@ export {
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
 } from '../opfsMessages.js';
 export type { OpfsMessageType } from '../opfsMessages.js';
+export type { Pathname, UrlString, FolderName } from '../types.js';
 export { getOpfsBackgroundFetchId } from './opfsBackgroundFetchId.js';
 
 export interface OpfsMessagePayload {
-    url?: string;
+    url?: UrlString;
     size?: number;
     limit?: number;
     reason?: string;
     /** ID регистрации Background Fetch (для COMPLETED/FAILED/ABORTED). */
     registrationId?: string;
     /** Assets (pathname'ы) всех записей (для COMPLETED). */
-    assets?: string[];
+    assets?: Pathname[];
     /** Успешно записанные в OPFS assets (для COMPLETED). */
-    written?: string[];
+    written?: Pathname[];
     /** Пропущенные или с ошибкой записи assets (для COMPLETED). */
-    failedOrSkipped?: string[];
+    failedOrSkipped?: Pathname[];
     /** Один записанный asset (pathname) (для FILE_WRITTEN). */
-    asset?: string;
+    asset?: Pathname;
     /** Накопленный список записанных assets (для FILE_WRITTEN). */
-    loadedAssets?: string[];
+    loadedAssets?: Pathname[];
     /** Общее число файлов в загрузке (для FILE_WRITTEN). */
     totalCount?: number;
 }
 
 export interface OpfsCachedResource {
-    url: string;
+    url: UrlString;
     size: number;
     type: string | undefined;
     lastModified: string | undefined;
@@ -205,16 +207,16 @@ export async function getBackgroundFetchFilter(): Promise<{
  * Фильтрует assets (pathname'ы) по include/exclude (те же правила, что в opfsBackgroundFetch).
  */
 export function filterAssetsForOpfs(
-    assets: string[],
+    assets: Pathname[],
     include?: string[],
     exclude?: string[]
-): string[] {
+): Pathname[] {
     const origin = typeof location !== 'undefined' ? location.origin : 'https://example.com';
     return assets.filter((p) => shouldProcessFile(new URL(p, origin).href, include, exclude));
 }
 
 async function getOpfsCacheDirOrUndefined(
-    folderName: string
+    folderName: FolderName
 ): Promise<FileSystemDirectoryHandle | undefined> {
     if (
         typeof navigator === 'undefined' ||
@@ -239,7 +241,7 @@ async function readMetadataFromFile(
 }
 
 export async function listOpfsCachedResources(
-    folderName: string
+    folderName: FolderName
 ): Promise<OpfsCachedResource[]> {
     const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
@@ -274,8 +276,8 @@ export async function listOpfsCachedResources(
 }
 
 export async function hasInOpfsCache(
-    url: string,
-    folderName: string
+    url: UrlString,
+    folderName: FolderName
 ): Promise<boolean> {
     const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
@@ -291,8 +293,8 @@ export async function hasInOpfsCache(
 }
 
 export async function deleteFromOpfsCache(
-    url: string,
-    folderName: string
+    url: UrlString,
+    folderName: FolderName
 ): Promise<void> {
     const dir = await getOpfsCacheDirOrUndefined(folderName);
     if (!dir) {
@@ -310,13 +312,13 @@ export async function deleteFromOpfsCache(
 export interface DownloadAssetsToOpfsResult {
     registrationId: string;
     /** Assets (pathname'ы) всех записей загрузки. */
-    assets?: string[];
+    assets?: Pathname[];
     /** Успешно записанные в OPFS assets. */
-    written?: string[];
+    written?: Pathname[];
     /** Пропущенные или с ошибкой записи assets. */
-    failedOrSkipped?: string[];
+    failedOrSkipped?: Pathname[];
     /** Assets, не попавшие в загрузку из-за фильтра include/exclude. */
-    filteredOut?: string[];
+    filteredOut?: Pathname[];
 }
 
 /** Причина отклонения при загрузке (fail или abort). */
@@ -328,9 +330,9 @@ export interface DownloadAssetsToOpfsRejected {
 /** Опции для startDownloadAssetsToOpfs. */
 export interface StartDownloadAssetsToOpfsOptions {
     /** Имя папки в OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
-    folderName: string;
+    folderName: FolderName;
     /** Список pathname'ов ресурсов для загрузки. Фильтр include/exclude запрашивается у SW. */
-    assets: string[];
+    assets: Pathname[];
     /** Заголовок для системного UI Background Fetch (например, уведомление на Android). */
     title?: string;
     /**
@@ -342,7 +344,7 @@ export interface StartDownloadAssetsToOpfsOptions {
     /** Колбек прогресса: (уже скачано байт, всего байт). Вызывается при каждом progress Background Fetch. */
     onProgress?: (downloaded: number, total: number) => void;
     /** Колбек после записи каждого файла в OPFS: (уже записанные pathname'ы, общее число файлов). */
-    onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
+    onFileWritten?: (loadedAssets: Pathname[], totalCount: number) => void;
     /** AbortSignal для отмены. При abort отписки снимаются, промис отклоняется с reason: 'abort'. */
     signal?: AbortSignal;
 }
