@@ -310,15 +310,23 @@ export async function getOpfsDir(
 }
 
 /**
+ * Сбрасывает все in-memory кэши для папки (индекс эвикции, metadata, range, хэндл директории).
+ * Вызывать после ручного удаления папки в OPFS или при NotFoundError из-за рассинхрона.
+ */
+export function invalidateAllCachesForFolder(folderName: string): void {
+    invalidateCacheForDir(folderName);
+    getRangeCache(folderName)?.invalidateAll();
+    getMetadataCache(folderName)?.invalidateAll();
+    dirCacheByFolder.delete(folderName);
+}
+
+/**
  * Удаляет папку в OPFS со всем содержимым. Сбрасывает in-memory кеш индекса эвикции и range cache для этой папки.
  *
  * @param folderName — имя папки (обязательно)
  */
 export async function clearOpfsCache(folderName: string): Promise<void> {
-    invalidateCacheForDir(folderName);
-    getRangeCache(folderName)?.invalidateAll();
-    getMetadataCache(folderName)?.invalidateAll();
-    dirCacheByFolder.delete(folderName);
+    invalidateAllCachesForFolder(folderName);
     const root = await getRoot();
     try {
         await root.removeEntry(folderName, { recursive: true });

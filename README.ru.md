@@ -47,11 +47,11 @@ import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-op
 
 initServiceWorker(
     [
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
         }),
@@ -88,12 +88,12 @@ import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-op
 
 initServiceWorker(
     [
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
             enableLogging: true,
         }),
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
         }),
@@ -194,6 +194,8 @@ createOpfsServeAndNetworkCachePlugins(options: {
   rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
+
+Фабрика возвращает массив плагинов. **initServiceWorker** (pluggable-serviceworker) разворачивает вложенные массивы плагинов, поэтому результат можно передавать без спреда.
 
 У каждого плагина в опциях обязательны **folderName: string** и **include: string[]** (непустой массив). Одна папка = один кеш. **include** и **exclude** могут быть glob-паттернами, pathname'ами или полными URL (например `['*.mp4', '/video/*']`, `['/assets/video.mp4']` или `['https://example.com/video/*']`). При инициализации полные URL приводятся к pathname (same-origin) или отбрасываются (cross-origin). Если после нормализации `include` оказался пустым (например в `include` были только cross-origin URL), фабрика возвращает `undefined` и плагин не создаётся. **Когда приходит запрос:** если URL запроса с другого origin — запрос не обрабатывается (ни отдача из кеша, ни запись). Если same-origin — по pathname URL запроса сопоставляем с (нормализованными) паттернами: например глоб `/video/*` совпадает с запросом на `https://example.com/video/1.mp4`. Плагины, которые обслуживают один и тот же кеш (например opfsServeRange + opfsBackgroundFetch или opfsServeRange + opfsRangeFromNetworkAndCache для сценария «кеш при первом запросе»), должны использовать один и тот же **folderName** и согласованные настройки (maxCacheFraction и при необходимости rangeCacheMaxSizeBytes/rangeCacheMaxEntries); иначе **registerFolderConfig** (вызывается фабриками плагинов) выбросит ошибку. Настройки по умолчанию для папки: maxCacheFraction 0.5, rangeCacheMaxSizeBytes 5 МБ, rangeCacheMaxEntries 300. Очистить кеш: **clearOpfsCache(folderName)**.
 

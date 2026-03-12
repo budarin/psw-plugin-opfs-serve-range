@@ -149,6 +149,11 @@ export interface EnsureSpaceOptions {
     folderName: string;
     /** Вызывается после успешной эвикции (список удалённых ключей). */
     onEvicted?: (keys: string[]) => void;
+    /**
+     * Ключ файла, который будет перезаписан этой операцией. Не удалять при эвикции:
+     * браузер может использовать тот же файл как источник response.body в Background Fetch.
+     */
+    excludeKeyFromEviction?: string;
 }
 
 /**
@@ -160,7 +165,7 @@ export async function ensureSpaceForWrite(
     newFileSize: number,
     options: EnsureSpaceOptions
 ): Promise<EnsureSpaceResult> {
-    const { folderName, onEvicted } = options;
+    const { folderName, onEvicted, excludeKeyFromEviction } = options;
     const estimate = await getStorageEstimate();
     const limit = getCacheLimit(estimate, folderName);
     const { entries, totalSize } = await getEntriesForEviction(dir);
@@ -175,14 +180,29 @@ export async function ensureSpaceForWrite(
         return { ok: true };
     }
 
-    if (needToFree > totalSize) {
+    const excludedEntry = excludeKeyFromEviction
+        ? entries.find((e) => e.key === excludeKeyFromEviction)
+        : undefined;
+    const excludedSize = excludedEntry?.size ?? 0;
+    const needToFreeOther = Math.max(0, needToFree - excludedSize);
+    const entriesForEviction =
+        excludeKeyFromEviction != null
+            ? entries.filter((e) => e.key !== excludeKeyFromEviction)
+            : entries;
+    const totalEvictableOther = entriesForEviction.reduce((sum, e) => sum + e.size, 0);
+
+    if (needToFreeOther === 0) {
+        return { ok: true };
+    }
+
+    if (needToFreeOther > totalEvictableOther) {
         return {
             ok: false,
             reason: 'File does not fit even after full eviction',
         };
     }
 
-    const keysToDelete = computeEvictionSet(entries, needToFree);
+    const keysToDelete = computeEvictionSet(entriesForEviction, needToFreeOther);
     await evictFiles(dir, keysToDelete);
     await removeFromEvictionIndex(dir, keysToDelete, folderName);
     onEvicted?.(keysToDelete);

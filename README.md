@@ -55,11 +55,11 @@ import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-op
 
 initServiceWorker(
     [
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
         }),
@@ -94,12 +94,12 @@ import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-op
 
 initServiceWorker(
     [
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
             enableLogging: true,
         }),
-        ...createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
         }),
@@ -200,6 +200,8 @@ createOpfsServeAndNetworkCachePlugins(options: {
   rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
+
+The factory returns an array of plugins. **initServiceWorker** (pluggable-serviceworker) flattens the plugins array, so you can pass the result directly without spread.
 
 Each plugin requires **folderName: string** and **include: string[]** (non-empty) in its options. One folder = one cache. **include** and **exclude** can be glob patterns, pathnames, or full URLs (e.g. `['*.mp4', '/video/*']`, `['/assets/video.mp4']`, or `['https://example.com/video/*']`). At plugin init, full URLs are converted to pathnames (same-origin) or dropped (cross-origin). If after normalization `include` becomes empty (e.g. it contained only cross-origin URLs), the factory returns `undefined` and the plugin is not created. **When a request arrives:** if the request URL is cross-origin it is never processed (no serve, no cache). If same-origin, the URL’s pathname is matched against the (normalized) patterns — so a glob like `/video/*` matches a request with URL `https://example.com/video/1.mp4`. Plugins that serve or fill the same cache (e.g. opfsServeRange + opfsBackgroundFetch, or opfsServeRange + opfsRangeFromNetworkAndCache for the “cache on first request” scenario) must use the same **folderName** and consistent cache settings (maxCacheFraction, and when relevant rangeCacheMaxSizeBytes/rangeCacheMaxEntries); otherwise **registerFolderConfig** (called by the plugin factories) throws. Per-folder settings: **maxCacheFraction** (default 0.5), **rangeCacheMaxSizeBytes** (default 5 MB), **rangeCacheMaxEntries** (default 300). To clear a cache, call **clearOpfsCache(folderName)**.
 

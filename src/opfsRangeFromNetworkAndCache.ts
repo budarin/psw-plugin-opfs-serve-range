@@ -11,6 +11,7 @@ import {
     emitDroppedPatternWarnings,
     getOpfsDir,
     getRoot,
+    invalidateAllCachesForFolder,
     normalizePatternList,
     registerFolderConfig,
 } from './opfsUtil.js';
@@ -21,6 +22,7 @@ import {
     createRangeExtractTransform,
 } from './opfsRangeUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
+import { addUrlServedFromNetwork } from './opfsPerTabNetworkUrls.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { isInSkipList } from './opfsLru.js';
 import {
@@ -125,12 +127,10 @@ async function backgroundFullFetchToOpfs(
             );
         }
     } catch (err) {
-        if (enableLogging) {
-            logger.error(
-                `opfsRangeFromNetworkAndCache: background full GET failed ${url}`,
-                err
-            );
-        }
+        logger.error(
+            `opfsRangeFromNetworkAndCache: background full GET failed ${url}`,
+            err
+        );
     } finally {
         loadingUrls.delete(url);
         activeRangeCacheFetchCount -= 1;
@@ -198,12 +198,14 @@ export function opfsRangeFromNetworkAndCache(
             }
 
             const url = request.url;
+            const pathname = new URL(url).pathname;
             const rangeHeader = request.headers.get(HEADER_RANGE);
 
             if (!rangeHeader) {
                 // Полный GET: fetch, при 200 кешируем (tee) и отдаём ответ.
                 try {
                     const response = await context.fetchPassthrough(request);
+                    addUrlServedFromNetwork(event.clientId ?? '', pathname);
                     if (!response.ok || !response.body) {
                         return response;
                     }
@@ -230,12 +232,10 @@ export function opfsRangeFromNetworkAndCache(
                         url,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
                     }).catch((err) => {
-                        if (enableLogging) {
-                            logger.error(
-                                `opfsRangeFromNetworkAndCache: write failed ${url}`,
-                                err
-                            );
-                        }
+                        logger.error(
+                            `opfsRangeFromNetworkAndCache: write failed ${url}`,
+                            err
+                        );
                     });
                     if (enableLogging) {
                         logger.debug(
@@ -252,23 +252,25 @@ export function opfsRangeFromNetworkAndCache(
                 }
             }
 
-            // Запрос с Range: при enableLogging проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
+            // Запрос с Range: проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
             try {
-                if (enableLogging) {
-                    try {
-                        const key = await urlToOpfsKey(url);
-                        const root = await getRoot();
-                        const dir = await getOpfsDir(root, false, folderName);
-                        await dir.getFileHandle(key);
-                        logger.warn(
-                            `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
-                        );
-                    } catch {
-                        // Файла нет в OPFS — нормально, идём в сеть.
+                try {
+                    const key = await urlToOpfsKey(url);
+                    const root = await getRoot();
+                    const dir = await getOpfsDir(root, false, folderName);
+                    await dir.getFileHandle(key);
+                    logger.warn(
+                        `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
+                    );
+                } catch (err) {
+                    if (err instanceof Error && err.name === 'NotFoundError') {
+                        invalidateAllCachesForFolder(folderName);
                     }
+                    // Файла нет в OPFS — нормально, идём в сеть.
                 }
 
                 const response = await context.fetchPassthrough(request);
+                addUrlServedFromNetwork(event.clientId ?? '', pathname);
                 if (!response.body) {
                     return response;
                 }
@@ -320,12 +322,10 @@ export function opfsRangeFromNetworkAndCache(
                             url,
                             knownSize: fullSize,
                         }).catch((err) => {
-                                if (enableLogging) {
-                                    logger.error(
-                                        `opfsRangeFromNetworkAndCache: write failed ${url}`,
-                                        err
-                                    );
-                                }
+                                logger.error(
+                                    `opfsRangeFromNetworkAndCache: write failed ${url}`,
+                                    err
+                                );
                             });
                         const rangeStream = branch1.pipeThrough(
                             createRangeExtractTransform(range)
@@ -348,13 +348,11 @@ export function opfsRangeFromNetworkAndCache(
 
                 return response;
             } catch (err) {
-                if (enableLogging) {
-                    logger.error(
-                        'opfsRangeFromNetworkAndCache: fetch failed',
-                        url,
-                        err
-                    );
-                }
+                logger.error(
+                    'opfsRangeFromNetworkAndCache: fetch failed',
+                    url,
+                    err
+                );
                 return;
             }
         },

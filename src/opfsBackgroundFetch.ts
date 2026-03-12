@@ -56,11 +56,8 @@ export function opfsBackgroundFetchFilter(options: OpfsBackgroundFetchFilterOpti
     const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
     const inc = normalizePatternList(options.include, baseOrigin);
     const exc = normalizePatternList(options.exclude, baseOrigin);
-    const include = inc.list;
-    const exclude = exc.list;
-    if (include == null || include.length === 0) {
-        return undefined;
-    }
+    const include = inc.list ?? [];
+    const exclude = exc.list ?? [];
     const droppedForLogger = {
         crossOrigin: [...inc.dropped.crossOrigin, ...exc.dropped.crossOrigin],
         invalid: [...inc.dropped.invalid, ...exc.dropped.invalid],
@@ -79,15 +76,17 @@ export function opfsBackgroundFetchFilter(options: OpfsBackgroundFetchFilterOpti
                 return;
             }
             const source = event.source;
-            if (source == null || typeof (source as Client).postMessage !== 'function') {
+            if (source == null) {
                 return;
             }
-            (source as Client).postMessage({
-                type: OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
-                requestId: data.requestId,
-                include,
-                exclude,
-            });
+            if (typeof (source as Client).postMessage === 'function') {
+                (source as Client).postMessage({
+                    type: OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
+                    requestId: data.requestId,
+                    include,
+                    exclude,
+                });
+            }
         },
     };
 }
@@ -238,6 +237,7 @@ export function opfsBackgroundFetch(
                     await writeToOpfs(dir, key, response.body, metadata, {
                         folderName,
                         url,
+                        excludeKeyFromEviction: key,
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
                     });
                     writtenPathnames.push(pathname);
@@ -254,12 +254,10 @@ export function opfsBackgroundFetch(
                     }
                 } catch (err) {
                     failedOrSkippedPathnames.push(pathname);
-                    if (enableLogging) {
-                        logger.error(
-                            `opfsBackgroundFetch: write failed ${record.request.url}`,
-                            err
-                        );
-                    }
+                    logger.error(
+                        `opfsBackgroundFetch: write failed ${record.request.url}`,
+                        err
+                    );
                 }
             }
             const assets = records.map((record: { request: Request }) => toPathname(record));
@@ -276,11 +274,9 @@ export function opfsBackgroundFetch(
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
                 registrationId: event.registration.id,
             });
-            if (enableLogging) {
-                logger.warn(
-                    `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
-                );
-            }
+            logger.warn(
+                `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
+            );
         },
 
         async backgroundfetchabort(event, context: PluginContext): Promise<void> {

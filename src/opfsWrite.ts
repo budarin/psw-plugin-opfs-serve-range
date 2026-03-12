@@ -24,6 +24,7 @@ import {
     registerFileInCache,
     removeFromEvictionIndex,
 } from './opfsEvictionIndex.js';
+import { invalidateAllCachesForFolder } from './opfsUtil.js';
 import {
     OPFS_MSG_WRITE_SKIPPED_SIZE,
     OPFS_MSG_QUOTA_EXCEEDED,
@@ -38,6 +39,8 @@ export interface WriteToOpfsOptions {
     url?: string;
     /** Известный размер тела (Content-Length). Если задан, перед записью проверяется лимит и при необходимости выполняется LRU-эвикция. */
     knownSize?: number;
+    /** Ключ файла в OPFS — при эвикции не удалять этот ключ (перезапись; иначе можно удалить источник response.body). */
+    excludeKeyFromEviction?: string;
 }
 
 /**
@@ -59,11 +62,12 @@ export async function writeToOpfs(
     metadata: OpfsMetadata,
     options: WriteToOpfsOptions
 ): Promise<void> {
-    const { folderName, url, knownSize } = options;
+    const { folderName, url, knownSize, excludeKeyFromEviction } = options;
 
     if (knownSize !== undefined && knownSize > 0) {
         const result = await ensureSpaceForWrite(dir, knownSize, {
             folderName,
+            ...(excludeKeyFromEviction != null && { excludeKeyFromEviction }),
             onEvicted(keys) {
                 if (keys.length > 0) {
                     notifyClients(OPFS_MSG_EVICTION_COMPLETED, { count: keys.length });
@@ -123,6 +127,9 @@ export async function writeToOpfs(
             await registerFileInCache(dir, key, file.size, false, now);
         }
     } catch (err) {
+        if (err instanceof Error && err.name === 'NotFoundError') {
+            invalidateAllCachesForFolder(folderName);
+        }
         const isQuotaExceeded =
             err instanceof Error &&
             (err.name === 'QuotaExceededError' || err.name === 'QuotaExceeded');

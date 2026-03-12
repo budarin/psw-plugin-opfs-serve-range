@@ -17,6 +17,7 @@ import {
     getRangeCacheMaxEntries,
     getRangeCacheMaxSizeBytes,
     getRoot,
+    invalidateAllCachesForFolder,
     isOpfsAvailable,
     normalizePatternList,
     registerFolderConfig,
@@ -38,7 +39,11 @@ import {
     createFileRangeStream,
 } from './opfsRangeUtil.js';
 import { updateEvictionIndexLastAccessed } from './opfsEvictionIndex.js';
-import { opfsBackgroundFetch } from './opfsBackgroundFetch.js';
+import {
+    addUrlServedFromNetwork,
+    isUrlServedFromNetworkForClient,
+} from './opfsPerTabNetworkUrls.js';
+import { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
 import { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 
 export {
@@ -56,6 +61,7 @@ export {
     getOpfsDir,
     getRoot,
     clearOpfsCache,
+    invalidateAllCachesForFolder,
     isOpfsAvailable,
     normalizePatternList,
     registerFolderConfig,
@@ -282,14 +288,17 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 return;
             }
 
+            if (!event.clientId) {
+                return;
+            }
+
+            const pathname = new URL(request.url).pathname;
             const url = request.url;
             let key: string;
             try {
                 key = await urlToOpfsKey(url);
             } catch (err) {
-                if (enableLogging) {
-                    logger.error(`opfsServeRange: hash failed for ${url}`, err);
-                }
+                logger.error(`opfsServeRange: hash failed for ${url}`, err);
                 return;
             }
 
@@ -297,7 +306,11 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             let dir: FileSystemDirectoryHandle;
             try {
                 dir = await getOpfsDir(root, false, folderName);
-            } catch {
+            } catch (err) {
+                if (err instanceof Error && err.name === 'NotFoundError') {
+                    invalidateAllCachesForFolder(folderName);
+                }
+                addUrlServedFromNetwork(event.clientId, pathname);
                 if (enableLogging) {
                     logger.debug(
                         `opfsServeRange: no plugin dir in OPFS for ${url}`
@@ -315,6 +328,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 try {
                     fileHandle = await dir.getFileHandle(key);
                 } catch {
+                    addUrlServedFromNetwork(event.clientId, pathname);
                     if (enableLogging) {
                         logger.debug(`opfsServeRange: no file in OPFS for ${url}`);
                     }
@@ -341,6 +355,16 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             const meta = cachedMeta;
             const size = meta.fullSize;
             const type = meta.type;
+
+            if (isUrlServedFromNetworkForClient(event.clientId, pathname)) {
+                if (enableLogging) {
+                    logger.debug(
+                        `opfsServeRange: ${pathname} already served from network for this client, passthrough (Chromium bug workaround)`
+                    );
+                }
+                return;
+            }
+
             const ifRangeHeader = request.headers.get(HEADER_IF_RANGE);
             if (
                 ifRangeHeader &&
@@ -351,6 +375,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     }),
                 })
             ) {
+                addUrlServedFromNetwork(event.clientId, pathname);
                 if (enableLogging) {
                     logger.debug(
                         `opfsServeRange: If-Range mismatch for ${url}, passing through`
@@ -486,9 +511,11 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
 
                 return response;
             } catch (err) {
-                if (enableLogging) {
-                    logger.error(`opfsServeRange: error for ${url}`, err);
+                if (err instanceof Error && err.name === 'NotFoundError') {
+                    invalidateAllCachesForFolder(folderName);
                 }
+                addUrlServedFromNetwork(event.clientId, pathname);
+                logger.error(`opfsServeRange: error for ${url}`, err);
                 return;
             }
         },
@@ -586,6 +613,11 @@ export function createOpfsServeAndBackgroundFetchPlugins(
     const { folderName, include, exclude, enableLogging, maxCacheFraction, pinned, logger, order = 0 } =
         options;
     const serve = opfsServeRange(buildServeOptions(options, order));
+    const filterPlugin = opfsBackgroundFetchFilter({
+        include,
+        ...(exclude !== undefined && { exclude }),
+        ...(logger !== undefined && { logger }),
+    });
     const bf = opfsBackgroundFetch({
         folderName,
         include,
@@ -596,7 +628,7 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
-    return [serve, bf].filter((p): p is Plugin => p !== undefined);
+    return [serve, filterPlugin, bf].filter((p): p is Plugin => p !== undefined);
 }
 
 /**
