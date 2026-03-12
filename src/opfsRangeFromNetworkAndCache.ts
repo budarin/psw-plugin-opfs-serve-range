@@ -252,21 +252,23 @@ export function opfsRangeFromNetworkAndCache(
                 }
             }
 
-            // Запрос с Range: проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
+            // Запрос с Range: при enableLogging проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
             try {
-                try {
-                    const key = await urlToOpfsKey(url);
-                    const root = await getRoot();
-                    const dir = await getOpfsDir(root, false, folderName);
-                    await dir.getFileHandle(key);
-                    logger.warn(
-                        `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
-                    );
-                } catch (err) {
-                    if (err instanceof Error && err.name === 'NotFoundError') {
-                        invalidateAllCachesForFolder(folderName);
+                if (enableLogging) {
+                    try {
+                        const key = await urlToOpfsKey(url);
+                        const root = await getRoot();
+                        const dir = await getOpfsDir(root, false, folderName);
+                        await dir.getFileHandle(key);
+                        logger.warn(
+                            `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
+                        );
+                    } catch (err) {
+                        if (err instanceof Error && err.name === 'NotFoundError') {
+                            invalidateAllCachesForFolder(folderName);
+                        }
+                        // Файла нет в OPFS — нормально, идём в сеть.
                     }
-                    // Файла нет в OPFS — нормально, идём в сеть.
                 }
 
                 const response = await context.fetchPassthrough(request);
