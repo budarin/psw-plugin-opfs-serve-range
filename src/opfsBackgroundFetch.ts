@@ -276,7 +276,7 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchfail(event, context: PluginContext): Promise<void> {
-            const logger = context.logger;
+            const logger = context.logger!;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
                 registrationId: event.registration.id,
             });
@@ -291,7 +291,7 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchabort(event, context: PluginContext): Promise<void> {
-            const logger = context.logger;
+            const logger = context.logger!;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_ABORTED, {
                 registrationId: event.registration.id,
             });
@@ -308,7 +308,7 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchclick(event, context: PluginContext): Promise<void> {
-            const logger = context.logger;
+            const logger = context.logger!;
             if (enableLogging) {
                 logger.debug(
                     `opfsBackgroundFetch: user clicked download UI, id=${event.registration.id}`
