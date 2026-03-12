@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.0 - 2026-03-12
+
+- **New plugin opfsRegisteredFolders:** Standalone plugin that answers client request **OPFS_REQUEST_GET_REGISTERED_FOLDERS** with the list of folder names registered in the service worker via **registerFolderConfig**. **createOpfsServeAndBackgroundFetchPlugins** now includes it (returns `[opfsServeRange, opfsBackgroundFetchFilter, opfsRegisteredFolders, opfsBackgroundFetch]`). For custom SW, register **opfsRegisteredFolders()** so that **getRegisteredFolders()** and folder validation in **startDownloadAssetsToOpfs** work.
+- **Client getRegisteredFolders():** Returns `Promise<FolderName[]>`; requests the list from SW. Used by **startDownloadAssetsToOpfs** before starting a download.
+- **startDownloadAssetsToOpfs** — folder validation: Before starting a background download, the client requests registered folders from SW. If the list is empty (timeout or plugin not registered), the promise rejects with **OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE**. If **folderName** is not in the list, the promise rejects with **OPFS_ERROR_FOLDER_NOT_REGISTERED**. Enables the UI to show a clear message when the folder is not registered in the SW.
+- **Error codes (client):** **OPFS_ERROR_FOLDER_NOT_REGISTERED**, **OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE** exported from the client entry. **StartDownloadError** type: `(Error & { code?: string }) | DownloadAssetsToOpfsRejected` for typing errors in the UI (check `error?.code`).
+- **useDownloadAssetsToOpfs:** **startDownload** now rejects the promise when an error occurs (same errors as above); the error is also stored in **error** state. Type **UseDownloadAssetsToOpfsState.error** is **StartDownloadError | null**. UI can display errors from state or from `startDownload(opts).catch(err => ...)`.
+- **opfsUtil:** **getRegisteredFolderNames()** — returns folder names from the SW folder registry; used by **opfsRegisteredFolders** plugin.
+- **opfsMessages:** **OPFS_REQUEST_GET_REGISTERED_FOLDERS**, **OPFS_RESPONSE_REGISTERED_FOLDERS** for client ↔ SW folder list request/response.
+- **Docs:** README and reference.md — opfsRegisteredFolders, getRegisteredFolders, error codes, StartDownloadError, hook rejection and error display. README.ru.md aligned.
+
 ## 3.3.0 - 2026-03-11
 
 - **Renamed:** **StartDownloadAssetsToOpfsOptions.downloadTotal** → **totalDownloadSizeInBytes**. Same meaning (total size of the download in bytes, for progress display); clearer name. Update call sites and options objects.

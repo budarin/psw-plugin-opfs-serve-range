@@ -237,14 +237,7 @@ interface FolderCacheConfig {
 }
 ```
 
-| Plugin                           | Purpose                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **opfsServeRange**               | Reads files from OPFS and serves requested byte ranges (206).                                                                                                                                                                                                                                                                                                    |
-| **opfsRangeFromNetworkAndCache** | Handles requests that opfsServeRange did not serve from cache: fetches from the network, streams the response to the client immediately, and when possible saves the file to OPFS in the background. This download is aborted when the tab closes or the network drops.                                                                                          |
-| **opfsBackgroundFetch**          | When a Background Fetch completes successfully, writes the fetched responses to OPFS; later byte-range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**). |
-| **opfsBackgroundFetchFilter**    | Handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. **This plugin is the SW counterpart to the client getBackgroundFetchFilter()** — the package exposes building blocks so each client utility has a matching plugin. Register opfsBackgroundFetchFilter alone (e.g. custom SW) or use opfsBackgroundFetch, which handles filter responses internally. |
-
-**opfsServeRange**
+**opfsServeRange** — reads files from OPFS and serves requested byte ranges (206).
 
 ```ts
 opfsServeRange(options: {
@@ -262,7 +255,7 @@ opfsServeRange(options: {
 }): Plugin | undefined
 ```
 
-**opfsRangeFromNetworkAndCache**
+**opfsRangeFromNetworkAndCache** — handles requests that opfsServeRange did not serve from cache: fetches from the network, streams the response to the client immediately, and when possible saves the file to OPFS in the background. This download is aborted when the tab closes or the network drops.
 
 ```ts
 opfsRangeFromNetworkAndCache(options: {
@@ -277,7 +270,7 @@ opfsRangeFromNetworkAndCache(options: {
 }): Plugin | undefined
 ```
 
-**opfsBackgroundFetch**
+**opfsBackgroundFetch** — when a Background Fetch completes successfully, writes the fetched responses to OPFS; later byte-range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**).
 
 ```ts
 opfsBackgroundFetch(options: {
@@ -292,9 +285,7 @@ opfsBackgroundFetch(options: {
 }): Plugin | undefined
 ```
 
-**opfsBackgroundFetchFilter**
-
-This plugin is the **SW-side counterpart to the client getBackgroundFetchFilter()**: the client calls getBackgroundFetchFilter() to request include/exclude; the SW must have a plugin that answers that request — either opfsBackgroundFetchFilter (standalone) or opfsBackgroundFetch (which handles it internally). When using the full stack you do not need to register opfsBackgroundFetchFilter separately. For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic. The filter normalizes include/exclude the same way (full URLs → pathnames or dropped); the client receives pathnames/globs. Returns **undefined** if after normalization include is empty (e.g. only cross-origin URLs), so no plugin is created.
+**opfsBackgroundFetchFilter** — handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. SW-side counterpart to the client **getBackgroundFetchFilter()**. When using the full stack you do not need to register it separately (opfsBackgroundFetch handles filter responses internally). For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic. The filter normalizes include/exclude the same way (full URLs → pathnames or dropped); the client receives pathnames/globs. Returns **undefined** if after normalization include is empty (e.g. only cross-origin URLs).
 
 ```ts
 opfsBackgroundFetchFilter(options: {
@@ -302,6 +293,12 @@ opfsBackgroundFetchFilter(options: {
   exclude?: string[];
   logger?: Logger; // default: console
 }): Plugin | undefined
+```
+
+**opfsRegisteredFolders** — handles only messages from the page: responds to **OPFS_REQUEST_GET_REGISTERED_FOLDERS** with the list of folder names registered in the SW via **registerFolderConfig**. SW-side counterpart to the client **getRegisteredFolders()**. **startDownloadAssetsToOpfs** uses this list to reject downloads when the given folderName is not registered. Include in custom SW if you use the client folder check.
+
+```ts
+opfsRegisteredFolders(): Plugin | undefined
 ```
 
 Pinned resources (the pinned option): an array of glob patterns for URLs. Resources matching these patterns are not evicted when space is low (LRU). Supported by both plugins that write to OPFS: opfsRangeFromNetworkAndCache and opfsBackgroundFetch.
@@ -314,7 +311,7 @@ Client-side functions are imported from `@budarin/psw-plugin-opfs-serve-range/cl
 
 ### Downloading assets to OPFS
 
-For startDownloadAssetsToOpfs to work as intended, the service worker must register a plugin that answers the filter request — either **opfsBackgroundFetch** (which calls the filter plugin internally) or **opfsBackgroundFetchFilter** alone (for a custom SW). Otherwise the page cannot get the filter settings and the download may use the wrong set of URLs.
+For startDownloadAssetsToOpfs to work as intended, the service worker must register plugins that answer client requests: **opfsBackgroundFetchFilter** (or opfsBackgroundFetch) for include/exclude filter, and **opfsRegisteredFolders** for the list of registered folder names. Otherwise the page cannot get the filter or folder list and the download will be rejected (see error codes OPFS_ERROR_*).
 
 **getBackgroundFetchFilter()**
 
@@ -322,7 +319,15 @@ For startDownloadAssetsToOpfs to work as intended, the service worker must regis
 getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
 ```
 
-Asks the SW for the current include/exclude. The SW must register the matching plugin — **opfsBackgroundFetchFilter** (the plugin counterpart to this client utility) or opfsBackgroundFetch. Resolves with the filter; empty object on timeout or when no SW responds.
+Asks the SW for the current include/exclude. The SW must register **opfsBackgroundFetchFilter** or opfsBackgroundFetch. Resolves with the filter; empty object on timeout or when no SW responds.
+
+**getRegisteredFolders()**
+
+```ts
+getRegisteredFolders(): Promise<FolderName[]>
+```
+
+Asks the SW for the list of folder names registered via registerFolderConfig. The SW must register the **opfsRegisteredFolders** plugin. On timeout or no response returns an empty array (then startDownloadAssetsToOpfs will reject with OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE).
 
 **filterAssetsForOpfs(assets, include?, exclude?)**
 
@@ -336,7 +341,7 @@ filterAssetsForOpfs(
 
 **startDownloadAssetsToOpfs(options)**
 
-**Before starting:** From the asset list (after include/exclude), the function first excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to **listOpfsCachedResources(folderName)**). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
+**Before starting:** The function requests the list of registered folders from the SW (**getRegisteredFolders()**). If **folderName** is not in the list or the list is empty, the promise rejects (OPFS_ERROR_FOLDER_NOT_REGISTERED or OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE). Then from the asset list (after include/exclude), it excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to **listOpfsCachedResources(folderName)**). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
 
 ```ts
 interface StartDownloadAssetsToOpfsOptions {
@@ -392,24 +397,25 @@ If you are not using startDownloadAssetsToOpfs or the hook and want to wire the 
 
 ### Subscriptions to service worker messages
 
-Each function takes a handler and returns a function to unsubscribe. When each type of message is sent is described in [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md).
+Each function takes a handler and returns a function to unsubscribe. When each message type is sent is described in [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md).
 
-```ts
-onOPFSQuotaExceeded(handler): () => void
-onOPFSWriteSkipped(handler): () => void
-onOPFSCacheLimitReached(handler): () => void
-onOPFSEvictionCompleted(handler): () => void
-onOPFSWriteFailed(handler): () => void
-onOPFSSkipQuotaExceeded(handler): () => void
-onOPFSBackgroundFetchFailed(handler): () => void
-onOPFSBackgroundFetchAborted(handler): () => void
-onOPFSBackgroundFetchCompleted(handler): () => void
-onOPFSBackgroundFetchFileWritten(handler): () => void
-onOPFSRangeCacheFetchStarted(handler): () => void
-onOPFSRangeCacheFetchAllDone(handler): () => void
-```
+**Skip list:** When streaming a write to OPFS, the browser may throw QuotaExceeded. If by then we have already written as many bytes as the whole cache size, evicting old files will not free enough space. That URL is added to the skip list (kept in the service worker’s memory for its lifetime). On later requests for that URL, the plugin does not attempt to cache again and sends **onOPFSSkipQuotaExceeded** so the client can show a warning.
 
-Each function accepts a handler and returns an unsubscribe function. Handler type and payload (exported from the package):
+**What each subscription is for:**
+
+- **onOPFSQuotaExceeded** — Quota exceeded while writing to OPFS.
+- **onOPFSWriteSkipped** — Write skipped before starting: with known size, the space check failed (file does not fit even after eviction).
+- **onOPFSEvictionCompleted** — Eviction completed.
+- **onOPFSWriteFailed** — Write error.
+- **onOPFSSkipQuotaExceeded** — Request for a URL in the skip list (plugin does not cache, only notifies).
+- **onOPFSBackgroundFetchFailed** — Background Fetch completed with failure.
+- **onOPFSBackgroundFetchAborted** — Background Fetch aborted.
+- **onOPFSBackgroundFetchCompleted** — Background Fetch completed successfully, assets in OPFS.
+- **onOPFSBackgroundFetchFileWritten** — Another file written to OPFS (per-file progress).
+- **onOPFSRangeCacheFetchStarted** — Plugin opfsRangeFromNetworkAndCache started a background cache fetch (“cache on first request” scenario). Use it to show a “background download in progress” indicator.
+- **onOPFSRangeCacheFetchAllDone** — All such background cache fetches have finished. Use it to hide the indicator.
+
+All of these functions share the same signature and handler type. **Common interface** (exported from the package):
 
 ```ts
 type OpfsMessageHandler = (event: MessageEvent & { data: { type: string } & OpfsMessagePayload }) => void;
@@ -427,25 +433,11 @@ interface OpfsMessagePayload {
     loadedAssets?: string[];
     totalCount?: number;
 }
+
+// Each subscription function: (handler: OpfsMessageHandler) => () => void
 ```
 
-Which fields appear in `event.data` depends on the message type (see list below and [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md)).
-
-**Skip list:** When streaming a write to OPFS, the browser may throw QuotaExceeded. If by then we have already written as many bytes as the whole cache size, evicting old files will not free enough space. That URL is added to the skip list (kept in the service worker’s memory for its lifetime). On later requests for that URL, the plugin does not attempt to cache again and sends **onOPFSSkipQuotaExceeded** so the client can show a warning.
-
-- **onOPFSQuotaExceeded** — Quota exceeded while writing to OPFS.
-- **onOPFSWriteSkipped** — Write skipped before starting: with known size, the space check failed (file does not fit even after eviction).
-- **onOPFSEvictionCompleted** — Eviction completed.
-- **onOPFSWriteFailed** — Write error.
-- **onOPFSSkipQuotaExceeded** — Request for a URL in the skip list (plugin does not cache, only notifies).
-- **onOPFSBackgroundFetchFailed** — Background Fetch completed with failure.
-- **onOPFSBackgroundFetchAborted** — Background Fetch aborted.
-- **onOPFSBackgroundFetchCompleted** — Background Fetch completed successfully, assets in OPFS.
-- **onOPFSBackgroundFetchFileWritten** — Another file written to OPFS (per-file progress).
-- **onOPFSRangeCacheFetchStarted** — Plugin opfsRangeFromNetworkAndCache started a background cache fetch (“cache on first request” scenario). Use it to show a “background download in progress” indicator.
-- **onOPFSRangeCacheFetchAllDone** — All such background cache fetches have finished. Use it to hide the indicator.
-
-Event types: `OpfsMessagePayload`; constants `OPFS_MSG_*`, `OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER`, `OPFS_RESPONSE_BACKGROUND_FETCH_FILTER`.
+Which fields appear in `event.data` depends on the message type (see list above and [opfs-cache-behavior.md](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.md)). Event type constants: `OPFS_MSG_*`, `OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER`, `OPFS_RESPONSE_BACKGROUND_FETCH_FILTER`.
 
 ### Cache utilities
 
