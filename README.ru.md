@@ -104,7 +104,9 @@ initServiceWorker(
 
 #### Клиент (страница)
 
-Удобнее всего использовать высокоуровневый API: одна функция запускает загрузку. Она возвращает обещание (промис), которое выполняется, когда ресурсы записаны в OPFS, или отклоняется при ошибке или отмене пользователем.
+Удобнее всего использовать высокоуровневый API: одна функция запускает загрузку. Она возвращает обещание (промис), которое выполняется, когда ресурсы записаны в OPFS, или отклоняется при ошибке или отмене пользователем. При этом:
+- системный UI Background Fetch (например, уведомление о загрузке на Android), если он поддерживается браузером, показывает прогресс и кнопки управления;
+- клиентский код получает детализированный прогресс и статусы через колбеки и подписки и может строить собственный расширенный интерфейс состояния загрузки.
 
 ```typescript
 import { startDownloadAssetsToOpfs } from '@budarin/psw-plugin-opfs-serve-range/client';
@@ -333,6 +335,43 @@ filterAssetsForOpfs(
 ): string[]
 ```
 
+**estimateAssetsSizeInBytes(assets)**
+
+```ts
+estimateAssetsSizeInBytes(
+  assets: string[]
+): Promise<{ totalSize: number; sizes: Record<string, number> }>
+```
+
+Отправляет HEAD-запросы к указанным ресурсам (same-origin) и пытается прочитать заголовок `Content-Length` для оценки размеров.
+
+- **assets** — список pathname'ов ресурсов (например, `['/video/1.mp4']`).
+- Возвращает объект:
+  - **totalSize** — суммарный размер в байтах по всем ресурсам, для которых удалось получить `Content-Length` (для остальных — 0).
+  - **sizes** — словарь `pathname → размер в байтах` (0, если размер определить не удалось).
+
+Хелпер работает только для same-origin ресурсов (как и весь пакет). Если сервер не отдаёт `Content-Length` или ответ неуспешен, размер считается равным 0, при этом промис не отклоняется.
+
+Пример использования вместе с `startDownloadAssetsToOpfs`:
+
+```ts
+import {
+  startDownloadAssetsToOpfs,
+  estimateAssetsSizeInBytes,
+} from '@budarin/psw-plugin-opfs-serve-range/client';
+
+async function downloadForOfflineWithEstimatedSize(assets: string[], title: string) {
+  const { totalSize } = await estimateAssetsSizeInBytes(assets);
+
+  await startDownloadAssetsToOpfs({
+    folderName: 'video-cache',
+    assets,
+    title,
+    totalDownloadSizeInBytes: totalSize,
+  });
+}
+```
+
 **startDownloadAssetsToOpfs(options)**
 
 **Логика перед запуском:** запрашивается список зарегистрированных в SW папок (**getRegisteredFolders()**); если папка **folderName** не в списке или список пуст — промис отклоняется (OPFS_ERROR_FOLDER_NOT_REGISTERED или OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE). Затем из списка assets (после фильтра include/exclude) исключаются те, что уже качаются в других активных Background Fetch (pathname берутся из matchAll() по каждой активной регистрации с префиксом `opfs-ranges-`). Затем исключаются те, что уже есть в OPFS (один вызов **listOpfsCachedResources(folderName)**). Порядок такой специально: сначала «в процессе», потом «уже в кеше» — чтобы не пропустить только что завершившуюся загрузку. В загрузку уходит только то, что осталось. Если ничего не осталось, промис сразу выполняется с `written: assetsToUse` (ничего не качаем). Идентификатор загрузки считается по набору pathname'ов идемпотентно (getOpfsBackgroundFetchId). Если с тем же набором загрузка уже идёт, новый вызов не создаёт вторую, а подписывается на уже идущую (attach); промис выполнится при её завершении.
@@ -345,6 +384,12 @@ interface StartDownloadAssetsToOpfsOptions {
     assets: string[];
     /** Заголовок для системного UI Background Fetch (например, уведомление на Android). */
     title?: string;
+    /** Иконки для системного UI Background Fetch (например, для уведомления на Android). */
+    icons?: {
+        src: string;
+        sizes?: string;
+        type?: string;
+    }[];
     /** Суммарный размер загрузки в байтах (всех assets). Опционально; только для прогресса (onProgress и системный UI показывают «X из Y» или %). */
     totalDownloadSizeInBytes?: number;
     /** Колбек прогресса: (скачано байт, всего байт). Вызывается при каждом progress Background Fetch. */

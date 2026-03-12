@@ -339,6 +339,43 @@ filterAssetsForOpfs(
 ): string[]
 ```
 
+**estimateAssetsSizeInBytes(assets)**
+
+```ts
+estimateAssetsSizeInBytes(
+  assets: string[]
+): Promise<{ totalSize: number; sizes: Record<string, number> }>
+```
+
+Sends HEAD requests for the given resources (same-origin) and tries to read the `Content-Length` header to estimate their sizes.
+
+- **assets** — list of resource pathnames (for example, `['/video/1.mp4']`).
+- Returns an object:
+  - **totalSize** — total number of bytes across all resources for which `Content-Length` was available (others contribute `0`).
+  - **sizes** — map `pathname → size in bytes` (`0` when the size cannot be determined).
+
+The helper works only for same-origin resources (like the rest of the package). If the server does not expose `Content-Length` or the response is not successful, the size is treated as `0`; the promise still resolves.
+
+Example together with `startDownloadAssetsToOpfs`:
+
+```ts
+import {
+  startDownloadAssetsToOpfs,
+  estimateAssetsSizeInBytes,
+} from '@budarin/psw-plugin-opfs-serve-range/client';
+
+async function downloadForOfflineWithEstimatedSize(assets: string[], title: string) {
+  const { totalSize } = await estimateAssetsSizeInBytes(assets);
+
+  await startDownloadAssetsToOpfs({
+    folderName: 'video-cache',
+    assets,
+    title,
+    totalDownloadSizeInBytes: totalSize,
+  });
+}
+```
+
 **startDownloadAssetsToOpfs(options)**
 
 **Before starting:** The function requests the list of registered folders from the SW (**getRegisteredFolders()**). If **folderName** is not in the list or the list is empty, the promise rejects (OPFS_ERROR_FOLDER_NOT_REGISTERED or OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE). Then from the asset list (after include/exclude), it excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to **listOpfsCachedResources(folderName)**). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.

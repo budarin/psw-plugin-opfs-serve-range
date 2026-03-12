@@ -1,6 +1,6 @@
 {
     "name": "@budarin/psw-plugin-opfs-serve-range",
-    "version": "3.4.0",
+    "version": "3.5.0",
     "description": "Service Worker plugin: serve HTTP Range requests from OPFS files",
     "keywords": [
         "service-worker",
@@ -55,7 +55,7 @@
         "@types/web": "^0.0.342",
         "react": "^19.2.4",
         "typescript": "^5.9.3",
-        "vitest": "^4.0.18"
+        "vitest": "^4.1.0"
     },
     "scripts": {
         "build": "tsc",

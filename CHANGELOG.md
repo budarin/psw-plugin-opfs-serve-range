@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.5.0 - 2026-03-12
+
+- **Background Fetch UI (system):** `startDownloadAssetsToOpfs` now accepts `icons` in options (forwarded to `BackgroundFetchUIOptions.icons`) so the browser’s built-in Background Fetch UI can use custom icons alongside `title` and `downloadTotal`. The service worker plugin `opfsBackgroundFetch` calls `event.updateUI()` on `backgroundfetchsuccess`, `backgroundfetchfail`, and `backgroundfetchabort` with neutral Russian titles ("Загрузка завершена", "Ошибка при загрузке", "Загрузка отменена") when the API is available, so the system UI reflects the final state of the download.
+- **Docs:** README.ru.md — explained coexistence of system Background Fetch UI (notifications) and custom client UI, documented the new `icons` field in `StartDownloadAssetsToOpfsOptions`.
+
 ## 3.4.0 - 2026-03-12
 
 - **New plugin opfsRegisteredFolders:** Standalone plugin that answers client request **OPFS_REQUEST_GET_REGISTERED_FOLDERS** with the list of folder names registered in the service worker via **registerFolderConfig**. **createOpfsServeAndBackgroundFetchPlugins** now includes it (returns `[opfsServeRange, opfsBackgroundFetchFilter, opfsRegisteredFolders, opfsBackgroundFetch]`). For custom SW, register **opfsRegisteredFolders()** so that **getRegisteredFolders()** and folder validation in **startDownloadAssetsToOpfs** work.

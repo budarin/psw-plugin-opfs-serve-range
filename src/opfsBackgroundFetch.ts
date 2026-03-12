@@ -268,6 +268,11 @@ export function opfsBackgroundFetch(
                 written: writtenPathnames,
                 failedOrSkipped: failedOrSkippedPathnames,
             });
+            if (typeof event.updateUI === 'function') {
+                await event.updateUI({
+                    title: 'Загрузка завершена',
+                });
+            }
         },
 
         async backgroundfetchfail(event, context: PluginContext): Promise<void> {
@@ -278,6 +283,11 @@ export function opfsBackgroundFetch(
             logger.warn(
                 `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
             );
+            if (typeof event.updateUI === 'function') {
+                await event.updateUI({
+                    title: 'Ошибка при загрузке',
+                });
+            }
         },
 
         async backgroundfetchabort(event, context: PluginContext): Promise<void> {
@@ -289,6 +299,11 @@ export function opfsBackgroundFetch(
                 logger.debug(
                     `opfsBackgroundFetch: background fetch aborted, id=${event.registration.id}`
                 );
+            }
+            if (typeof event.updateUI === 'function') {
+                await event.updateUI({
+                    title: 'Загрузка отменена',
+                });
             }
         },
 
