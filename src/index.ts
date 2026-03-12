@@ -9,6 +9,7 @@ import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 import type { FolderName } from './types.js';
 import { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 import { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
+import { opfsRegisteredFolders } from './opfsRegisteredFolders.js';
 import { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 
 export {
@@ -30,6 +31,7 @@ export {
     isOpfsAvailable,
     normalizePatternList,
     registerFolderConfig,
+    getRegisteredFolderNames,
     getMaxCacheFraction,
     getGlobalMaxCacheFraction,
     setGlobalMaxCacheFraction,
@@ -76,6 +78,8 @@ export {
     OPFS_BACKGROUND_FETCH_ID_PREFIX,
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
+    OPFS_REQUEST_GET_REGISTERED_FOLDERS,
+    OPFS_RESPONSE_REGISTERED_FOLDERS,
 } from './opfsMessages.js';
 export type { OpfsMessageType } from './opfsMessages.js';
 export type { WriteToOpfsOptions } from './opfsWrite.js';
@@ -139,6 +143,7 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         ...(exclude !== undefined && { exclude }),
         ...(logger !== undefined && { logger }),
     });
+    const registeredFoldersPlugin = opfsRegisteredFolders();
     const bf = opfsBackgroundFetch({
         folderName,
         include,
@@ -149,7 +154,7 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
-    return [serve, filterPlugin, bf].filter((p): p is Plugin => p !== undefined);
+    return [serve, filterPlugin, registeredFoldersPlugin, bf].filter((p): p is Plugin => p !== undefined);
 }
 
 /**
@@ -186,6 +191,7 @@ export { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 export { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 export type { OpfsRangeFromNetworkAndCacheOptions } from './opfsRangeFromNetworkAndCache.js';
 export { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
+export { opfsRegisteredFolders } from './opfsRegisteredFolders.js';
 export type {
     OpfsBackgroundFetchOptions,
     OpfsBackgroundFetchFilterOptions,

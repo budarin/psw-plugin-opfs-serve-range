@@ -29,6 +29,11 @@ export const OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER = 'OPFS_REQUEST_GET_BACKGR
 /** Ответ SW на OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER (requestId, include?, exclude?). */
 export const OPFS_RESPONSE_BACKGROUND_FETCH_FILTER = 'OPFS_RESPONSE_BACKGROUND_FETCH_FILTER';
 
+/** Запрос клиента к SW: вернуть список зарегистрированных папок (requestId в data, ответ — OPFS_RESPONSE_REGISTERED_FOLDERS). */
+export const OPFS_REQUEST_GET_REGISTERED_FOLDERS = 'OPFS_REQUEST_GET_REGISTERED_FOLDERS';
+/** Ответ SW на OPFS_REQUEST_GET_REGISTERED_FOLDERS (requestId, folderNames: string[]). */
+export const OPFS_RESPONSE_REGISTERED_FOLDERS = 'OPFS_RESPONSE_REGISTERED_FOLDERS';
+
 /** Префикс идентификатора загрузки Background Fetch: плагин opfsBackgroundFetch обрабатывает только события с id, начинающимся с этой строки. */
 export const OPFS_BACKGROUND_FETCH_ID_PREFIX = 'opfs-ranges-';
 

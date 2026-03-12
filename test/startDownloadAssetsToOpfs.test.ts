@@ -10,6 +10,8 @@ import {
     OPFS_MSG_BACKGROUND_FETCH_FILE_WRITTEN,
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
+    OPFS_REQUEST_GET_REGISTERED_FOLDERS,
+    OPFS_RESPONSE_REGISTERED_FOLDERS,
 } from '../src/opfsMessages.js';
 
 const handlers: Record<string, (e: MessageEvent) => void> = {};
@@ -44,12 +46,15 @@ const originalLocation = globalThis.location;
 
 /** Ответ SW на запрос фильтра (для тестов «filter»). По умолчанию include ['*'] — все проходят. */
 let swFilterResponse: { include?: string[]; exclude?: string[] } = { include: ['*'] };
+/** Список папок, которые SW «зарегистрировал» (для ответа на getRegisteredFolders). По умолчанию ['test-cache']. */
+let swRegisteredFolders: string[] = ['test-cache'];
 const messageListeners: Array<{ type: string; fn: (e: MessageEvent) => void }> = [];
 
 beforeEach(() => {
     vi.clearAllMocks();
     capturedId = null;
     swFilterResponse = { include: ['*'] };
+    swRegisteredFolders = ['test-cache'];
     messageListeners.length = 0;
     Object.keys(handlers).forEach((k) => delete handlers[k]);
     Object.defineProperty(globalThis, 'location', {
@@ -70,6 +75,21 @@ beforeEach(() => {
                                     requestId: msg.requestId,
                                     include: swFilterResponse.include,
                                     exclude: swFilterResponse.exclude,
+                                },
+                            } as MessageEvent)
+                        );
+                }, 0);
+            }
+            if (msg?.type === OPFS_REQUEST_GET_REGISTERED_FOLDERS && msg.requestId) {
+                setTimeout(() => {
+                    messageListeners
+                        .filter((l) => l.type === 'message')
+                        .forEach((l) =>
+                            l.fn({
+                                data: {
+                                    type: OPFS_RESPONSE_REGISTERED_FOLDERS,
+                                    requestId: msg.requestId,
+                                    folderNames: swRegisteredFolders,
                                 },
                             } as MessageEvent)
                         );
@@ -254,5 +274,27 @@ describe('startDownloadAssetsToOpfs', () => {
         });
         await p;
         expect(onFileWritten).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects with OPFS_ERROR_FOLDER_NOT_REGISTERED when folderName is not in SW registered list', async () => {
+        swRegisteredFolders = ['other-folder'];
+        const { startDownloadAssetsToOpfs, OPFS_ERROR_FOLDER_NOT_REGISTERED } = await getModule();
+        await expect(
+            startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a.mp4'] })
+        ).rejects.toMatchObject({
+            message: expect.stringContaining('not registered'),
+            code: OPFS_ERROR_FOLDER_NOT_REGISTERED,
+        });
+    });
+
+    it('rejects with OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE when SW returns empty folder list', async () => {
+        swRegisteredFolders = [];
+        const { startDownloadAssetsToOpfs, OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE } = await getModule();
+        await expect(
+            startDownloadAssetsToOpfs({ folderName: 'test-cache', assets: ['/a.mp4'] })
+        ).rejects.toMatchObject({
+            message: expect.stringContaining('did not report registered folders'),
+            code: OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE,
+        });
     });
 });

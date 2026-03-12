@@ -27,6 +27,8 @@ import {
     OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE,
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
+    OPFS_REQUEST_GET_REGISTERED_FOLDERS,
+    OPFS_RESPONSE_REGISTERED_FOLDERS,
 } from '../opfsMessages.js';
 import type { FolderName, Pathname, UrlString } from '../types.js';
 import { getOpfsDir, getRoot, shouldProcessFile } from '../opfsUtil.js';
@@ -50,8 +52,15 @@ export {
     OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE,
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
+    OPFS_REQUEST_GET_REGISTERED_FOLDERS,
+    OPFS_RESPONSE_REGISTERED_FOLDERS,
 } from '../opfsMessages.js';
 export type { OpfsMessageType } from '../opfsMessages.js';
+
+/** Код ошибки: папка не зарегистрирована в SW (startDownloadAssetsToOpfs отказывает в старте). */
+export const OPFS_ERROR_FOLDER_NOT_REGISTERED = 'OPFS_FOLDER_NOT_REGISTERED';
+/** Код ошибки: SW не вернул список папок (таймаут или плагин opfsRegisteredFolders не подключён). */
+export const OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE = 'OPFS_SERVICE_WORKER_UNAVAILABLE';
 export type { Pathname, UrlString, FolderName } from '../types.js';
 export { getOpfsBackgroundFetchId } from './opfsBackgroundFetchId.js';
 
@@ -204,6 +213,36 @@ export async function getBackgroundFetchFilter(): Promise<{
 }
 
 /**
+ * Запрашивает у SW список папок, зарегистрированных через registerFolderConfig.
+ * В SW должен быть зарегистрирован плагин opfsRegisteredFolders. При таймауте или отсутствии ответа возвращает [].
+ */
+export async function getRegisteredFolders(): Promise<FolderName[]> {
+    const reg = await navigator.serviceWorker.ready;
+    const controller = reg.active;
+    if (!controller) {
+        return [];
+    }
+    const requestId = `opfs-folders-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve([]), 5000);
+        const onMessage = (event: MessageEvent): void => {
+            const data = event.data as { type?: string; requestId?: string; folderNames?: string[] };
+            if (data?.type !== OPFS_RESPONSE_REGISTERED_FOLDERS || data.requestId !== requestId) {
+                return;
+            }
+            clearTimeout(timeout);
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            resolve(Array.isArray(data.folderNames) ? data.folderNames : []);
+        };
+        navigator.serviceWorker.addEventListener('message', onMessage);
+        controller.postMessage({
+            type: OPFS_REQUEST_GET_REGISTERED_FOLDERS,
+            requestId,
+        });
+    });
+}
+
+/**
  * Фильтрует assets (pathname'ы) по include/exclude (те же правила, что в opfsBackgroundFetch).
  */
 export function filterAssetsForOpfs(
@@ -327,6 +366,9 @@ export interface DownloadAssetsToOpfsRejected {
     reason: 'fail' | 'abort';
 }
 
+/** Ошибка старта загрузки: Error (возможно с code: OPFS_ERROR_*) или DownloadAssetsToOpfsRejected. Для отображения в UI проверяйте error?.code. */
+export type StartDownloadError = (Error & { code?: string }) | DownloadAssetsToOpfsRejected;
+
 /** Опции для startDownloadAssetsToOpfs. */
 export interface StartDownloadAssetsToOpfsOptions {
     /** Имя папки в OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
@@ -361,6 +403,21 @@ export function startDownloadAssetsToOpfs(
     const filteredOut: string[] = [];
 
     return getBackgroundFetchFilter().then(async (filter) => {
+        const registeredFolders = await getRegisteredFolders();
+        if (registeredFolders.length === 0) {
+            const err = new Error('OPFS: service worker did not report registered folders');
+            (err as Error & { code: string }).code = OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE;
+            console.error(err.message);
+            throw err;
+        }
+        if (!registeredFolders.includes(folderName)) {
+            const err = new Error(
+                `OPFS: folder "${folderName}" is not registered in the service worker`
+            );
+            (err as Error & { code: string }).code = OPFS_ERROR_FOLDER_NOT_REGISTERED;
+            console.error(err.message);
+            throw err;
+        }
         const assetsToUse = filterAssetsForOpfs(assets, filter.include, filter.exclude);
         assets.forEach((p) => {
             if (!assetsToUse.includes(p)) {

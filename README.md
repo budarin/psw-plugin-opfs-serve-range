@@ -370,17 +370,17 @@ interface DownloadAssetsToOpfsResult {
 }
 ```
 
-Reject: **DownloadAssetsToOpfsRejected** `{ registrationId: string; reason: 'fail' | 'abort' }` or **Error**.
+Reject: **DownloadAssetsToOpfsRejected** `{ registrationId: string; reason: 'fail' | 'abort' }` or **Error** (start errors may have `error.code`: `OPFS_ERROR_FOLDER_NOT_REGISTERED`, `OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE`). Use `try/catch` or `.catch()` to handle and display errors in the UI.
 
-- **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, error, result, and a reset function. The download is not cancelled on unmount; cancel only via reset(). If the user clicks "Download" again with the same set of files, the call attaches to the existing download (no duplicate). Requires React as a peer dependency.
+- **useDownloadAssetsToOpfs()** — React hook. Returns the function to start a download, status, progress in bytes and per file, **error** (set on failure so you can show it in the UI), result, and a reset function. **startDownload** rejects the promise on error (same errors as above); the error is also stored in **error** state. Check `error?.code` for `OPFS_ERROR_FOLDER_NOT_REGISTERED` or `OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE`. The download is not cancelled on unmount; cancel only via reset(). If the user clicks "Download" again with the same set of files, the call attaches to the existing download (no duplicate). Requires React as a peer dependency.
 
 ```ts
 useDownloadAssetsToOpfs(): {
-    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>;
+    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>; // rejects on error
     status: 'idle' | 'pending' | 'success' | 'failure' | 'aborted';
     progress: { downloaded: number; total: number } | null;
     fileProgress: { loadedAssets: string[]; totalCount: number } | null;
-    error: Error | DownloadAssetsToOpfsRejected | null;
+    error: StartDownloadError | null; // use error?.code for OPFS_ERROR_* in UI
     data: DownloadAssetsToOpfsResult | null;
     reset: () => void;
 }

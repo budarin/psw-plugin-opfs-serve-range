@@ -166,6 +166,14 @@ export function registerFolderConfig(
     folderRegistry.set(folderName, normalized);
 }
 
+/**
+ * Возвращает имена папок, зарегистрированных в SW через registerFolderConfig.
+ * Используется плагином opfsRegisteredFolders для ответа клиенту на запрос списка папок.
+ */
+export function getRegisteredFolderNames(): FolderName[] {
+    return Array.from(folderRegistry.keys());
+}
+
 let cachedRootPromise: Promise<FileSystemDirectoryHandle> | null = null;
 
 /**

@@ -9,7 +9,7 @@ import {
     startDownloadAssetsToOpfs,
     type StartDownloadAssetsToOpfsOptions,
     type DownloadAssetsToOpfsResult,
-    type DownloadAssetsToOpfsRejected,
+    type StartDownloadError,
 } from './index.js';
 
 export type DownloadAssetsStatus = 'idle' | 'pending' | 'success' | 'failure' | 'aborted';
@@ -19,7 +19,8 @@ export interface UseDownloadAssetsToOpfsState {
     progress: { downloaded: number; total: number } | null;
     /** Прогресс по файлам: уже записанные assets и общее число. */
     fileProgress: { loadedAssets: string[]; totalCount: number } | null;
-    error: Error | DownloadAssetsToOpfsRejected | null;
+    /** Ошибка при старте или в процессе загрузки. Для проверки кода (OPFS_ERROR_*) используйте error?.code. */
+    error: StartDownloadError | null;
     data: DownloadAssetsToOpfsResult | null;
 }
 
@@ -27,9 +28,11 @@ const THROTTLE_MS = 200;
 
 /**
  * Хук для загрузки assets в OPFS. Возвращает startDownload и состояние (status, progress, error, data).
+ * startDownload отклоняет промис при ошибке (в т.ч. OPFS_ERROR_FOLDER_NOT_REGISTERED), ошибка также попадает в error.
  * При размонтировании подписки снимаются, setState не вызывается, загрузка не отменяется.
  */
 export function useDownloadAssetsToOpfs(): {
+    /** При ошибке промис отклоняется (reject), та же ошибка записывается в error. */
     startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>;
     status: DownloadAssetsStatus;
     progress: UseDownloadAssetsToOpfsState['progress'];
@@ -123,15 +126,17 @@ export function useDownloadAssetsToOpfs(): {
                     setProgress(null);
                 }
             } catch (err) {
+                const errorValue = err instanceof Error ? err : (err as StartDownloadError);
                 if (mountedRef.current) {
                     setStatus(
                         err && typeof err === 'object' && 'reason' in err && (err as { reason: string }).reason === 'abort'
                             ? 'aborted'
                             : 'failure'
                     );
-                    setError(err instanceof Error ? err : (err as DownloadAssetsToOpfsRejected));
+                    setError(errorValue);
                     setProgress(null);
                 }
+                throw err;
             } finally {
                 cleanup();
             }
