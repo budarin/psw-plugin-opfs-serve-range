@@ -269,11 +269,6 @@ export function opfsBackgroundFetch(
                 written: writtenPathnames,
                 failedOrSkipped: failedOrSkippedPathnames,
             });
-            if (typeof event.updateUI === 'function') {
-                await event.updateUI({
-                    title: 'Загрузка завершена',
-                });
-            }
         },
 
         async backgroundfetchfail(event, context: PluginContext): Promise<void> {

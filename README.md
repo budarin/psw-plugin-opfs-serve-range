@@ -378,6 +378,8 @@ async function downloadForOfflineWithEstimatedSize(assets: string[], title: stri
 
 **startDownloadAssetsToOpfs(options)**
 
+On success, the system download list keeps the **title** you pass (fail/abort still show an updated title). Use a descriptive **title** so completed entries are distinguishable.
+
 **Before starting:** The function requests the list of registered folders from the SW (**getRegisteredFolders()**). If **folderName** is not in the list or the list is empty, the promise rejects (OPFS_ERROR_FOLDER_NOT_REGISTERED or OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE). Then from the asset list (after include/exclude), it excludes pathnames that are already being fetched in other active Background Fetch registrations (pathnames from matchAll() for each active registration with the `opfs-ranges-` prefix). It then excludes pathnames already in OPFS (one call to **listOpfsCachedResources(folderName)**). This order (in progress first, then in cache) ensures a just-finished download is not missed. Only the remaining assets are queued for download. If none remain, the promise resolves immediately with `written: assetsToUse` (nothing to fetch). The download id is computed idempotently from the pathname set (getOpfsBackgroundFetchId). If a download with the same set is already running, the new call attaches to it instead of creating a duplicate; the promise resolves when that download completes.
 
 ```ts

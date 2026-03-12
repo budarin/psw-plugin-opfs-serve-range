@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.0 - 2026-03-12
+
+- **Background Fetch system UI on success:** On **backgroundfetchsuccess** the plugin no longer calls **event.updateUI({ title: 'Загрузка завершена' })**. The system download list keeps the **title** passed to **startDownloadAssetsToOpfs({ title })**, so completed entries are distinguishable (e.g. "Урок 1", "Плейлист офлайн") instead of many identical "Загрузка завершена". On **backgroundfetchfail** and **backgroundfetchabort** the title is still updated ("Ошибка при загрузке", "Загрузка отменена").
+
 ## 3.8.0 - 2026-03-12
 
 - **Video reconnect — layout and overlay:** Wrapper now copies margin, boxSizing, display, and verticalAlign from the video so it occupies the same space in the flow (no jump when replacing the node). When the video has `display: inline`, the wrapper uses `inline-block` so fixed width/height apply. Wrapper has `overflow: hidden` and `isolation: isolate`; its `position: relative` is set with `!important` so it stays the containing block. Video inside the wrapper is `position: absolute` with `z-index: 0`; the snapshot canvas is inserted as the first child with `position: absolute`, `top: 0`, `left: 0`, explicit pixel dimensions, and `z-index: 1` (all with `!important`) so the snapshot reliably overlays the video and is not pushed below in the flow. Cleanup restores the video’s position, top, left, and zIndex. Styles are applied in batches via `Object.assign` where multiple properties are set.
