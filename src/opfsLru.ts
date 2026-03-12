@@ -169,7 +169,7 @@ export async function ensureSpaceForWrite(
     const { folderName, onEvicted, excludeKeyFromEviction } = options;
     const estimate = await getStorageEstimate();
     const limit = getCacheLimit(estimate, folderName);
-    const { entries, totalSize } = await getEntriesForEviction(dir);
+    const { entries, totalSize } = await getEntriesForEviction(dir, folderName);
 
     const needToFree = Math.max(
         0,

@@ -15,11 +15,11 @@ const LAST_ACCESSED_THROTTLE_MS = 5000;
 /** Минимальный интервал между записями индекса на диск (батчинг для снижения I/O). */
 const INDEX_WRITE_THROTTLE_MS = 5000;
 
-const lastAccessedUpdateByKey = new Map<string, number>();
-/** Время последней записи индекса по dir.name (для троттлинга записи). */
-const lastIndexWriteByDirName = new Map<string, number>();
-/** Таймер отложенной записи индекса по dir.name. */
-const indexFlushTimerByDirName = new Map<string, ReturnType<typeof setTimeout>>();
+const lastAccessedUpdateByKey = new Map<OpfsKey, number>();
+/** Время последней записи индекса по folderName (для троттлинга записи). */
+const lastIndexWriteByFolderName = new Map<FolderName, number>();
+/** Таймер отложенной записи индекса по folderName. */
+const indexFlushTimerByFolderName = new Map<FolderName, ReturnType<typeof setTimeout>>();
 
 export interface EvictionIndexEntry {
     key: OpfsKey;
@@ -33,10 +33,10 @@ interface FileCacheEntry {
     evictable: boolean;
 }
 
-/** Полный список файлов по dir.name: key → { size, lastAccessed, evictable }. */
-const cacheByDirName = new Map<string, Map<string, FileCacheEntry>>();
-/** Для каких каталогов кеш уже заполнен (один проход после старта SW). */
-const cachePopulatedByDir = new Set<string>();
+/** Полный список файлов по folderName: key → { size, lastAccessed, evictable }. */
+const cacheByFolderName = new Map<FolderName, Map<OpfsKey, FileCacheEntry>>();
+/** Для каких папок кеш уже заполнен (один проход после старта SW). */
+const cachePopulatedByFolderName = new Set<FolderName>();
 
 let indexLock: Promise<void> = Promise.resolve();
 
@@ -102,18 +102,17 @@ async function writeIndexRaw(
     await writable.close();
 }
 
-function getCache(dir: FileSystemDirectoryHandle): Map<string, FileCacheEntry> {
-    const name = dir.name;
-    let cache = cacheByDirName.get(name);
+function getCache(folderName: FolderName): Map<OpfsKey, FileCacheEntry> {
+    let cache = cacheByFolderName.get(folderName);
     if (cache === undefined) {
         cache = new Map();
-        cacheByDirName.set(name, cache);
+        cacheByFolderName.set(folderName, cache);
     }
     return cache;
 }
 
 function getEvictableEntriesFromCache(
-    cache: Map<string, FileCacheEntry>
+    cache: Map<OpfsKey, FileCacheEntry>
 ): EvictionIndexEntry[] {
     const entries: EvictionIndexEntry[] = [];
     for (const [key, entry] of cache.entries()) {
@@ -133,13 +132,13 @@ function getEvictableEntriesFromCache(
  * Вызывать только под lock.
  */
 async function populateCacheUnlocked(
-    dir: FileSystemDirectoryHandle
+    dir: FileSystemDirectoryHandle,
+    folderName: FolderName
 ): Promise<void> {
-    const name = dir.name;
-    if (cachePopulatedByDir.has(name)) {
+    if (cachePopulatedByFolderName.has(folderName)) {
         return;
     }
-    const cache = getCache(dir);
+    const cache = getCache(folderName);
     cache.clear();
     const indexEntries = await readIndexRaw(dir);
     const indexMap =
@@ -151,9 +150,9 @@ async function populateCacheUnlocked(
         if (fileKey === EVICTION_INDEX_FILENAME || handle.kind !== 'file') {
             continue;
         }
-        const indexEntry = indexMap?.get(fileKey);
+        const indexEntry = indexMap?.get(fileKey as OpfsKey);
         if (indexEntry !== undefined) {
-            cache.set(fileKey, {
+            cache.set(fileKey as OpfsKey, {
                 size: indexEntry.size,
                 lastAccessed: indexEntry.lastAccessed,
                 evictable: true,
@@ -163,7 +162,7 @@ async function populateCacheUnlocked(
         try {
             const file = await (handle as FileSystemFileHandle).getFile();
             const { metadata } = await readMetadataFromFileFooter(file);
-            cache.set(fileKey, {
+            cache.set(fileKey as OpfsKey, {
                 size: file.size,
                 lastAccessed: metadata?.lastAccessed ?? 0,
                 evictable: metadata?.evictable !== false,
@@ -179,7 +178,7 @@ async function populateCacheUnlocked(
     if (shouldPersistIndex) {
         await writeIndexRaw(dir, evictableEntries);
     }
-    cachePopulatedByDir.add(name);
+    cachePopulatedByFolderName.add(folderName);
 }
 
 /**
@@ -188,14 +187,15 @@ async function populateCacheUnlocked(
  */
 export async function registerFileInCache(
     dir: FileSystemDirectoryHandle,
+    folderName: FolderName,
     key: OpfsKey,
     size: number,
     evictable: boolean,
     lastAccessed: number
 ): Promise<void> {
     return runWithLock(async () => {
-        await populateCacheUnlocked(dir);
-        getCache(dir).set(key, { size, lastAccessed, evictable });
+        await populateCacheUnlocked(dir, folderName);
+        getCache(folderName).set(key, { size, lastAccessed, evictable });
     });
 }
 
@@ -203,14 +203,14 @@ export async function registerFileInCache(
  * Сбрасывает in-memory кеш для каталога (после clearOpfsCache).
  */
 export function invalidateCacheForDir(folderName: FolderName): void {
-    const timer = indexFlushTimerByDirName.get(folderName);
+    const timer = indexFlushTimerByFolderName.get(folderName);
     if (timer !== undefined) {
         clearTimeout(timer);
-        indexFlushTimerByDirName.delete(folderName);
+        indexFlushTimerByFolderName.delete(folderName);
     }
-    lastIndexWriteByDirName.delete(folderName);
-    cacheByDirName.delete(folderName);
-    cachePopulatedByDir.delete(folderName);
+    lastIndexWriteByFolderName.delete(folderName);
+    cacheByFolderName.delete(folderName);
+    cachePopulatedByFolderName.delete(folderName);
 }
 
 export interface GetEntriesForEvictionResult {
@@ -223,11 +223,12 @@ export interface GetEntriesForEvictionResult {
  * При первом вызове после старта заполняет кеш одним проходом (индекс + pinned или пересборка).
  */
 export async function getEntriesForEviction(
-    dir: FileSystemDirectoryHandle
+    dir: FileSystemDirectoryHandle,
+    folderName: FolderName
 ): Promise<GetEntriesForEvictionResult> {
     return runWithLock(async () => {
-        await populateCacheUnlocked(dir);
-        const cache = getCache(dir);
+        await populateCacheUnlocked(dir, folderName);
+        const cache = getCache(folderName);
         const entries: EvictionIndexEntry[] = [];
         let totalSize = 0;
         for (const [key, entry] of cache.entries()) {
@@ -250,6 +251,7 @@ export async function getEntriesForEviction(
  */
 export async function updateEvictionIndexLastAccessed(
     dir: FileSystemDirectoryHandle,
+    folderName: FolderName,
     key: OpfsKey,
     lastAccessed: number
 ): Promise<void> {
@@ -258,8 +260,8 @@ export async function updateEvictionIndexLastAccessed(
         return;
     }
     return runWithLock(async () => {
-        await populateCacheUnlocked(dir);
-        const cache = getCache(dir);
+        await populateCacheUnlocked(dir, folderName);
+        const cache = getCache(folderName);
         const entry = cache.get(key);
         if (entry === undefined || !entry.evictable) {
             return;
@@ -267,29 +269,28 @@ export async function updateEvictionIndexLastAccessed(
         entry.lastAccessed = lastAccessed;
         lastAccessedUpdateByKey.set(key, lastAccessed);
 
-        const dirName = dir.name;
         const now = Date.now();
-        const lastWrite = lastIndexWriteByDirName.get(dirName) ?? 0;
+        const lastWrite = lastIndexWriteByFolderName.get(folderName) ?? 0;
 
         if (now - lastWrite >= INDEX_WRITE_THROTTLE_MS) {
-            const timer = indexFlushTimerByDirName.get(dirName);
+            const timer = indexFlushTimerByFolderName.get(folderName);
             if (timer !== undefined) {
                 clearTimeout(timer);
-                indexFlushTimerByDirName.delete(dirName);
+                indexFlushTimerByFolderName.delete(folderName);
             }
             await writeIndexRaw(dir, getEvictableEntriesFromCache(cache));
-            lastIndexWriteByDirName.set(dirName, now);
-        } else if (!indexFlushTimerByDirName.has(dirName)) {
+            lastIndexWriteByFolderName.set(folderName, now);
+        } else if (!indexFlushTimerByFolderName.has(folderName)) {
             const timer = setTimeout(() => {
-                indexFlushTimerByDirName.delete(dirName);
+                indexFlushTimerByFolderName.delete(folderName);
                 runWithLock(async () => {
-                    await populateCacheUnlocked(dir);
-                    const c = getCache(dir);
+                    await populateCacheUnlocked(dir, folderName);
+                    const c = getCache(folderName);
                     await writeIndexRaw(dir, getEvictableEntriesFromCache(c));
-                    lastIndexWriteByDirName.set(dirName, Date.now());
+                    lastIndexWriteByFolderName.set(folderName, Date.now());
                 });
             }, INDEX_WRITE_THROTTLE_MS);
-            indexFlushTimerByDirName.set(dirName, timer);
+            indexFlushTimerByFolderName.set(folderName, timer);
         }
     });
 }
@@ -299,13 +300,14 @@ export async function updateEvictionIndexLastAccessed(
  */
 export async function addToEvictionIndex(
     dir: FileSystemDirectoryHandle,
+    folderName: FolderName,
     key: OpfsKey,
     size: number,
     lastAccessed: number
 ): Promise<void> {
     return runWithLock(async () => {
-        await populateCacheUnlocked(dir);
-        const cache = getCache(dir);
+        await populateCacheUnlocked(dir, folderName);
+        const cache = getCache(folderName);
         cache.set(key, { size, lastAccessed, evictable: true });
         await writeIndexRaw(dir, getEvictableEntriesFromCache(cache));
     });
@@ -335,8 +337,8 @@ export async function removeFromEvictionIndex(
         }
     }
     return runWithLock(async () => {
-        await populateCacheUnlocked(dir);
-        const cache = getCache(dir);
+        await populateCacheUnlocked(dir, folderName);
+        const cache = getCache(folderName);
         for (const k of set) {
             cache.delete(k);
         }

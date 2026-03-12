@@ -123,9 +123,9 @@ export async function writeToOpfs(
         const file = await handle.getFile();
         const now = Date.now();
         if (metadata.evictable !== false) {
-            await addToEvictionIndex(dir, key, file.size, now);
+            await addToEvictionIndex(dir, folderName, key, file.size, now);
         } else {
-            await registerFileInCache(dir, key, file.size, false, now);
+            await registerFileInCache(dir, folderName, key, file.size, false, now);
         }
     } catch (err) {
         if (err instanceof Error && err.name === 'NotFoundError') {
@@ -140,7 +140,7 @@ export async function writeToOpfs(
             // ignore
         }
         if (isQuotaExceeded && url !== undefined) {
-            const { entries, totalSize: totalCacheSize } = await getEntriesForEviction(dir);
+            const { entries, totalSize: totalCacheSize } = await getEntriesForEviction(dir, folderName);
             const bytesWritten = bodySize;
             if (bytesWritten >= totalCacheSize) {
                 addToSkipList(url);

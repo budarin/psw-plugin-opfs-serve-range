@@ -361,6 +361,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                                 event.waitUntil(
                                     updateEvictionIndexLastAccessed(
                                         dir,
+                                        folderName,
                                         key,
                                         Date.now()
                                     )
@@ -403,6 +404,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                         event.waitUntil(
                             updateEvictionIndexLastAccessed(
                                 dir,
+                                folderName,
                                 key,
                                 Date.now()
                             )
@@ -441,7 +443,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     event.waitUntil
                 ) {
                     event.waitUntil(
-                        updateEvictionIndexLastAccessed(dir, key, Date.now())
+                        updateEvictionIndexLastAccessed(dir, folderName, key, Date.now())
                     );
                 }
 
