@@ -242,7 +242,7 @@ interface FolderCacheConfig {
 | **opfsServeRange**               | Reads files from OPFS and serves requested byte ranges (206).                                                                                                                                                                                                                                                                                                    |
 | **opfsRangeFromNetworkAndCache** | Handles requests that opfsServeRange did not serve from cache: fetches from the network, streams the response to the client immediately, and when possible saves the file to OPFS in the background. This download is aborted when the tab closes or the network drops.                                                                                          |
 | **opfsBackgroundFetch**          | When a Background Fetch completes successfully, writes the fetched responses to OPFS; later byte-range requests for those URLs are served by opfsServeRange. Only processes downloads whose id starts with **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). In its message handler it calls the filter-response plugin (see **opfsBackgroundFetchFilter**). |
-| **opfsBackgroundFetchFilter**    | Handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. The client side calls **getBackgroundFetchFilter()** to get this. You can register this plugin alone in a custom service worker with your own include and exclude.                                     |
+| **opfsBackgroundFetchFilter**    | Handles only messages from the page: responds to the filter request (type OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) with the current include and exclude. **This plugin is the SW counterpart to the client getBackgroundFetchFilter()** — the package exposes building blocks so each client utility has a matching plugin. Register opfsBackgroundFetchFilter alone (e.g. custom SW) or use opfsBackgroundFetch, which handles filter responses internally. |
 
 **opfsServeRange**
 
@@ -294,7 +294,7 @@ opfsBackgroundFetch(options: {
 
 **opfsBackgroundFetchFilter**
 
-This plugin answers the filter request that the client sends via **getBackgroundFetchFilter()**. When using the full stack you do not need to register it separately: opfsBackgroundFetch calls it internally. For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic. The filter normalizes include/exclude the same way (full URLs → pathnames or dropped); the client receives pathnames/globs. Returns **undefined** if after normalization include is empty (e.g. only cross-origin URLs), so no plugin is created.
+This plugin is the **SW-side counterpart to the client getBackgroundFetchFilter()**: the client calls getBackgroundFetchFilter() to request include/exclude; the SW must have a plugin that answers that request — either opfsBackgroundFetchFilter (standalone) or opfsBackgroundFetch (which handles it internally). When using the full stack you do not need to register opfsBackgroundFetchFilter separately. For a custom service worker, register opfsBackgroundFetchFilter with the same include and exclude as your download logic. The filter normalizes include/exclude the same way (full URLs → pathnames or dropped); the client receives pathnames/globs. Returns **undefined** if after normalization include is empty (e.g. only cross-origin URLs), so no plugin is created.
 
 ```ts
 opfsBackgroundFetchFilter(options: {
@@ -322,7 +322,7 @@ For startDownloadAssetsToOpfs to work as intended, the service worker must regis
 getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
 ```
 
-Resolves with the filter from SW (opfsBackgroundFetchFilter or opfsBackgroundFetch). Empty object on timeout or when no SW responds.
+Asks the SW for the current include/exclude. The SW must register the matching plugin — **opfsBackgroundFetchFilter** (the plugin counterpart to this client utility) or opfsBackgroundFetch. Resolves with the filter; empty object on timeout or when no SW responds.
 
 **filterAssetsForOpfs(assets, include?, exclude?)**
 

@@ -236,7 +236,7 @@ interface FolderCacheConfig {
 | **opfsServeRange**               | Читает файлы из OPFS и отдаёт запрошенные диапазоны байтов (206).                                                                                                                                                                                                                                                                                                                                       |
 | **opfsRangeFromNetworkAndCache** | Обрабатывает запросы, которые opfsServeRange не отдал из кеша: загружает данные из сети, сразу отдаёт ответ клиенту и при возможности сохраняет файл в OPFS в фоне. Такая загрузка прерывается при закрытии вкладки или обрыве сети.                                                                                                                                                                    |
 | **opfsBackgroundFetch**          | При успешном завершении Background Fetch записывает загруженные ответы в OPFS; последующие запросы по диапазону байтов к этим адресам обслуживает opfsServeRange. Учитываются только загрузки с идентификатором, начинающимся с **OPFS_BACKGROUND_FETCH_ID_PREFIX** (`opfs-ranges-`). В обработчике сообщений от страницы вызывает плагин ответа на запрос фильтра (см. **opfsBackgroundFetchFilter**). |
-| **opfsBackgroundFetchFilter**    | Обрабатывает только сообщения от страницы: на запрос фильтра (тип OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) отвечает текущими значениями include и exclude. Эту пару на стороне клиента вызывает **getBackgroundFetchFilter()**. Плагин можно регистрировать отдельно в кастомном сервис-воркере со своими include и exclude.                                                                           |
+| **opfsBackgroundFetchFilter**    | Обрабатывает только сообщения от страницы: на запрос фильтра (тип OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER) отвечает текущими include и exclude. **Этот плагин — серверная пара клиентской утилиты getBackgroundFetchFilter()**: пакет даёт элементы конструктора, у каждой клиентской утилиты есть соответствующий плагин. Регистрируйте opfsBackgroundFetchFilter отдельно (например в кастомном SW) или используйте opfsBackgroundFetch, который обрабатывает ответ по фильтру сам. |
 
 **opfsServeRange**
 
@@ -288,7 +288,7 @@ opfsBackgroundFetch(options: {
 
 **opfsBackgroundFetchFilter**
 
-Плагин отвечает на запрос фильтра, который со стороны клиента отправляет **getBackgroundFetchFilter()**. При использовании полного стека регистрировать его отдельно не нужно: opfsBackgroundFetch сам вызывает этот плагин. В кастомном сервис-воркере зарегистрируйте opfsBackgroundFetchFilter с теми же include и exclude, что и ваша логика загрузки. Фильтр так же нормализует include/exclude (полные URL → pathname или отбрасываются); клиент получает pathname/глобы. Возвращает **undefined**, если после нормализации include пуст (например только cross-origin URL), плагин не создаётся.
+Плагин — **серверная пара клиентской утилиты getBackgroundFetchFilter()**: клиент вызывает getBackgroundFetchFilter(), чтобы запросить include/exclude; в SW должен быть зарегистрирован плагин, отвечающий на этот запрос — либо opfsBackgroundFetchFilter (отдельно), либо opfsBackgroundFetch (он обрабатывает ответ по фильтру сам). При полном стеке регистрировать opfsBackgroundFetchFilter отдельно не нужно. В кастомном сервис-воркере зарегистрируйте opfsBackgroundFetchFilter с теми же include и exclude, что и ваша логика загрузки. Фильтр так же нормализует include/exclude (полные URL → pathname или отбрасываются); клиент получает pathname/глобы. Возвращает **undefined**, если после нормализации include пуст (например только cross-origin URL), плагин не создаётся.
 
 ```ts
 opfsBackgroundFetchFilter(options: {
@@ -316,7 +316,7 @@ Entry point: `@budarin/psw-plugin-opfs-serve-range/client`. React-хук: `@buda
 getBackgroundFetchFilter(): Promise<{ include?: string[]; exclude?: string[] }>
 ```
 
-Резолвится фильтром от SW (opfsBackgroundFetchFilter или opfsBackgroundFetch). Пустой объект при таймауте или отсутствии ответа от SW.
+Запрашивает у SW текущие include и exclude. В SW должен быть зарегистрирован соответствующий плагин — **opfsBackgroundFetchFilter** (плагин-пара этой клиентской утилиты) или opfsBackgroundFetch. Резолвится объектом с фильтром; пустой объект при таймауте или отсутствии ответа от SW.
 
 **filterAssetsForOpfs(assets, include?, exclude?)**
 
