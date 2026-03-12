@@ -258,6 +258,10 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             }
 
             const metadataCache = getOrCreateMetadataCache(folderName);
+            const rangeCache =
+                useRangeCache && rangeCacheLimits !== null
+                    ? getOrCreateRangeCache(folderName, rangeCacheLimits)
+                    : null;
             let cachedMeta = metadataCache.get(key);
             let file: File | undefined;
 
@@ -325,9 +329,8 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             try {
                 const range = parseRangeHeader(rangeHeader, size);
 
-                if (useRangeCache && rangeCacheLimits !== null) {
-                    const cache = getOrCreateRangeCache(folderName, rangeCacheLimits);
-                    const cached = cache.get(key, range.start, range.end);
+                if (rangeCache !== null) {
+                    const cached = rangeCache.get(key, range.start, range.end);
                     if (cached !== undefined) {
                         const metaForResponse = metadataCache.get(key);
                         if (metaForResponse !== undefined) {
@@ -369,14 +372,14 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                             }
                             return response;
                         }
-                        getRangeCache(folderName)?.invalidateForKey(key);
+                        rangeCache.invalidateForKey(key);
                     }
                     if (file === undefined) {
                         const fileHandle = await dir.getFileHandle(key);
                         file = await fileHandle.getFile();
                     }
                     const blob = file.slice(range.start, range.end + 1);
-                    cache.set(key, range.start, range.end, blob);
+                    rangeCache.set(key, range.start, range.end, blob);
                     const response = build206Response(
                         blob,
                         range,
