@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.8.0 - 2026-03-12
+
+- **Video reconnect — layout and overlay:** Wrapper now copies margin, boxSizing, display, and verticalAlign from the video so it occupies the same space in the flow (no jump when replacing the node). When the video has `display: inline`, the wrapper uses `inline-block` so fixed width/height apply. Wrapper has `overflow: hidden` and `isolation: isolate`; its `position: relative` is set with `!important` so it stays the containing block. Video inside the wrapper is `position: absolute` with `z-index: 0`; the snapshot canvas is inserted as the first child with `position: absolute`, `top: 0`, `left: 0`, explicit pixel dimensions, and `z-index: 1` (all with `!important`) so the snapshot reliably overlays the video and is not pushed below in the flow. Cleanup restores the video’s position, top, left, and zIndex. Styles are applied in batches via `Object.assign` where multiple properties are set.
+
 ## 3.7.0 - 2026-03-12
 
 - **Switch player to OPFS when file is loaded:** **reconnectPlayerOnFileLoadedIntoOpfs(element, payload, folderName, options?)** — call from **onOPFSBackgroundFetchFileWritten** so that when the currently playing file is written to OPFS, the player reconnects to the same URL (served from cache) and restores playback state (position, paused, playbackRate, volume, muted). Optional **options**: `logger`, `debug` for diagnostics. **useReconnectPlayerOnFileLoadedIntoOpfs(mediaRef, options)** — React hook that subscribes to **onOPFSBackgroundFetchFileWritten** and calls the helper. Types: **FileWrittenPayload**, **ReconnectPlayerOnFileLoadedIntoOpfsOptions**.

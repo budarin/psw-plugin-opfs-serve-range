@@ -501,7 +501,7 @@ deleteFromOpfsCache(url: string, folderName: string): Promise<void>
 
 ### Switch player to OPFS when file is loaded
 
-When a file (the current source of a video/audio element) has been written to OPFS via Background Fetch, you can reconnect the player to that same URL so subsequent requests are served from OPFS (e.g. for instant seeking). Use **onOPFSBackgroundFetchFileWritten** and **reconnectPlayerOnFileLoadedIntoOpfs**. For **video**, the current frame is shown as an overlay during the switch and removed only when the new source is actually displaying (**playing** or **seeked**), so there is no black flash. If the video had no explicit dimensions, they are fixed for the duration of the switch and then cleared, so the layout does not change. Audio is reconnected without any overlay.
+When a file (the current source of a video/audio element) has been written to OPFS via Background Fetch, you can reconnect the player to that same URL so subsequent requests are served from OPFS (e.g. for instant seeking). Use **onOPFSBackgroundFetchFileWritten** and **reconnectPlayerOnFileLoadedIntoOpfs**. For **video**, the current frame is shown as an overlay during the switch and removed only when the new source is actually displaying (**playing** or **seeked**), so there is no black flash. The wrapper preserves the video’s layout (margin, box-sizing, display) so the switch does not shift content. If the video had no explicit dimensions, they are fixed for the duration of the switch and then cleared. Audio is reconnected without any overlay.
 
 **reconnectPlayerOnFileLoadedIntoOpfs(element, payload, folderName, options?)**
 

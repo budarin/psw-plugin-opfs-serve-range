@@ -470,28 +470,68 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
     let weAddedDimensions = false;
     let wrapper: HTMLDivElement | null = null;
     let overlay: HTMLCanvasElement | null = null;
+    let savedVideoWidth = '';
+    let savedVideoHeight = '';
+    let savedVideoMaxWidth = '';
+    let savedVideoMaxHeight = '';
+    let savedVideoPosition = '';
+    let savedVideoTop = '';
+    let savedVideoLeft = '';
+    let savedVideoZIndex = '';
 
     if (isVideo) {
         const video = element as HTMLVideoElement;
         if (!hasExplicitDimensions(video)) {
             const w = video.offsetWidth;
             const h = video.offsetHeight;
-            video.style.width = `${w}px`;
-            video.style.height = `${h}px`;
+            Object.assign(video.style, { width: `${w}px`, height: `${h}px` });
             weAddedDimensions = true;
         }
 
         const parent = video.parentNode;
         if (parent) {
             const nextSibling = video.nextSibling;
+            const computed = getComputedStyle(video);
+            const wrapW = video.offsetWidth;
+            const wrapH = video.offsetHeight;
+            savedVideoWidth = video.style.width;
+            savedVideoHeight = video.style.height;
+            savedVideoMaxWidth = video.style.maxWidth;
+            savedVideoMaxHeight = video.style.maxHeight;
+            savedVideoPosition = video.style.position;
+            savedVideoTop = video.style.top;
+            savedVideoLeft = video.style.left;
+            savedVideoZIndex = video.style.zIndex;
             wrapper = document.createElement('div');
-            wrapper.style.position = 'relative';
-            wrapper.style.width = `${video.offsetWidth}px`;
-            wrapper.style.height = `${video.offsetHeight}px`;
-            wrapper.style.display = 'inline-block';
+            const wrapperDisplay =
+                computed.display === 'inline' ? 'inline-block' : computed.display;
+            wrapper.style.setProperty('position', 'relative', 'important');
+            Object.assign(wrapper.style, {
+                width: `${wrapW}px`,
+                height: `${wrapH}px`,
+                display: wrapperDisplay,
+                overflow: 'hidden',
+                isolation: 'isolate',
+                boxSizing: computed.boxSizing,
+                marginTop: computed.marginTop,
+                marginRight: computed.marginRight,
+                marginBottom: computed.marginBottom,
+                marginLeft: computed.marginLeft,
+                verticalAlign: computed.verticalAlign,
+            });
             parent.removeChild(video);
             wrapper.appendChild(video);
             parent.insertBefore(wrapper, nextSibling);
+            Object.assign(video.style, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                zIndex: '0',
+                width: `${wrapW}px`,
+                height: `${wrapH}px`,
+                maxWidth: 'none',
+                maxHeight: 'none',
+            });
 
             if (video.videoWidth > 0 && video.videoHeight > 0) {
                 const canvas = document.createElement('canvas');
@@ -504,13 +544,14 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
                         0,
                         0
                     );
-                    canvas.style.position = 'absolute';
-                    canvas.style.top = '0';
-                    canvas.style.left = '0';
-                    canvas.style.width = '100%';
-                    canvas.style.height = '100%';
+                    canvas.style.setProperty('position', 'absolute', 'important');
+                    canvas.style.setProperty('top', '0', 'important');
+                    canvas.style.setProperty('left', '0', 'important');
+                    canvas.style.setProperty('width', `${wrapW}px`, 'important');
+                    canvas.style.setProperty('height', `${wrapH}px`, 'important');
+                    canvas.style.setProperty('z-index', '1', 'important');
                     canvas.style.pointerEvents = 'none';
-                    wrapper.appendChild(canvas);
+                    wrapper.insertBefore(canvas, wrapper.firstChild);
                     overlay = canvas;
                 }
             }
@@ -529,10 +570,22 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
             parent.insertBefore(element, nextSibling);
             wrapper = null;
         }
-        if (weAddedDimensions && isVideo) {
+        if (isVideo) {
             const video = element as HTMLVideoElement;
-            video.style.width = '';
-            video.style.height = '';
+            if (weAddedDimensions) {
+                Object.assign(video.style, { width: '', height: '' });
+            } else {
+                Object.assign(video.style, {
+                    width: savedVideoWidth,
+                    height: savedVideoHeight,
+                    maxWidth: savedVideoMaxWidth,
+                    maxHeight: savedVideoMaxHeight,
+                    position: savedVideoPosition,
+                    top: savedVideoTop,
+                    left: savedVideoLeft,
+                    zIndex: savedVideoZIndex,
+                });
+            }
         }
     };
 
