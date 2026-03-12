@@ -31,6 +31,7 @@ import {
     OPFS_MSG_RANGE_CACHE_FETCH_STARTED,
     OPFS_MSG_RANGE_CACHE_FETCH_ALL_DONE,
 } from './opfsMessages.js';
+import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
 
 /** URL, по которым уже идёт фоновая полная загрузка в OPFS. */
 const loadingUrls = new Set<string>();
@@ -88,7 +89,7 @@ async function backgroundFullFetchToOpfs(
         if (isInSkipList(url)) {
             if (enableLogging) {
                 logger.debug(
-                    `opfsRangeFromNetworkAndCache: skip ${url} (in skip list, quota exceeded)`
+                    `${OPFS_RANGE_LOG_SW}skip ${url} (in skip list, quota exceeded)`
                 );
             }
             return;
@@ -98,7 +99,7 @@ async function backgroundFullFetchToOpfs(
         if (!response.ok || !response.body) {
             if (enableLogging) {
                 logger.debug(
-                    `opfsRangeFromNetworkAndCache: background full GET ${url} -> ${response.status}, skip cache`
+                    `${OPFS_RANGE_LOG_SW}background full GET ${url} -> ${response.status}, skip cache`
                 );
             }
             return;
@@ -106,7 +107,7 @@ async function backgroundFullFetchToOpfs(
         if (response.status !== 200) {
             if (enableLogging) {
                 logger.debug(
-                    `opfsRangeFromNetworkAndCache: background full GET ${url} -> ${response.status}, skip cache`
+                    `${OPFS_RANGE_LOG_SW}background full GET ${url} -> ${response.status}, skip cache`
                 );
             }
             return;
@@ -124,12 +125,12 @@ async function backgroundFullFetchToOpfs(
         });
         if (enableLogging) {
             logger.debug(
-                `opfsRangeFromNetworkAndCache: background cached ${url} -> ${key} (${metadata.size} bytes)`
+                `${OPFS_RANGE_LOG_SW}background cached ${url} -> ${key} (${metadata.size} bytes)`
             );
         }
     } catch (err) {
         logger.error(
-            `opfsRangeFromNetworkAndCache: background full GET failed ${url}`,
+            `${OPFS_RANGE_LOG_SW}background full GET failed ${url}`,
             err
         );
     } finally {
@@ -234,13 +235,13 @@ export function opfsRangeFromNetworkAndCache(
                         ...(metadata.size > 0 && { knownSize: metadata.size }),
                     }).catch((err) => {
                         logger.error(
-                            `opfsRangeFromNetworkAndCache: write failed ${url}`,
+                            `${OPFS_RANGE_LOG_SW}write failed ${url}`,
                             err
                         );
                     });
                     if (enableLogging) {
                         logger.debug(
-                            `opfsRangeFromNetworkAndCache: caching full GET ${url} (${metadata.size} bytes)`
+                            `${OPFS_RANGE_LOG_SW}caching full GET ${url} (${metadata.size} bytes)`
                         );
                     }
                     return new Response(branch1, {
@@ -262,7 +263,7 @@ export function opfsRangeFromNetworkAndCache(
                         const dir = await getOpfsDir(root, false, folderName);
                         await dir.getFileHandle(key);
                         logger.warn(
-                            `opfsRangeFromNetworkAndCache: file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
+                            `${OPFS_RANGE_LOG_SW}file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
                         );
                     } catch (err) {
                         if (err instanceof Error && err.name === 'NotFoundError') {
@@ -352,7 +353,7 @@ export function opfsRangeFromNetworkAndCache(
                 return response;
             } catch (err) {
                 logger.error(
-                    'opfsRangeFromNetworkAndCache: fetch failed',
+                    `${OPFS_RANGE_LOG_SW}fetch failed`,
                     url,
                     err
                 );

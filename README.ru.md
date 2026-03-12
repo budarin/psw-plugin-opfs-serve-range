@@ -166,13 +166,13 @@ function DownloadButton() {
 ```ts
 createOpfsServeAndBackgroundFetchPlugins(options: {
   folderName: string;
-  include: string[];  // обязательно, непустой массив
+  order?: number;            // по умолчанию 0
+  include: string[];
   exclude?: string[];
-  enableLogging?: boolean;
-  logger?: Logger; // по умолчанию console
+  enableLogging?: boolean;   // по умолчанию false
+  logger?: Logger;
   maxCacheFraction?: number;
   pinned?: string[];
-  order?: number;  // по умолчанию 0 — первый плагин получает order, второй — order + 1
   rangeResponseCacheControl?: string;
   rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
   rangeCacheMaxSizeBytes?: number;
@@ -183,13 +183,13 @@ createOpfsServeAndBackgroundFetchPlugins(options: {
 ```ts
 createOpfsServeAndNetworkCachePlugins(options: {
   folderName: string;
-  include: string[];  // обязательно, непустой массив
+  order?: number;            // по умолчанию 0
+  include: string[];
   exclude?: string[];
-  enableLogging?: boolean;
-  logger?: Logger; // по умолчанию console
+  enableLogging?: boolean;   // по умолчанию false
+  logger?: Logger;
   maxCacheFraction?: number;
   pinned?: string[];
-  order?: number;  // по умолчанию 0 — первый плагин получает order, второй — order + 1
   rangeResponseCacheControl?: string;
   rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
   rangeCacheMaxSizeBytes?: number;
@@ -221,7 +221,7 @@ getRangeCacheMaxSizeBytes(folderName: string): number
 getRangeCacheMaxEntries(folderName: string): number
 ```
 
-При инициализации полные URL приводятся к pathname; cross-origin и невалидные попадают в `dropped`. Фабрики плагинов выводят предупреждения через logger (по умолчанию console). **getGlobalMaxCacheFraction** по умолчанию 0.5; **setGlobalMaxCacheFraction** ожидает (0, 1], при неверном значении — throw.
+При инициализации полные URL приводятся к pathname; cross-origin и невалидные попадают в `dropped`. Фабрики плагинов выводят предупреждения через logger. **getGlobalMaxCacheFraction** по умолчанию 0.5; **setGlobalMaxCacheFraction** ожидает (0, 1], при неверном значении — throw.
 
 **FolderCacheConfig** (для `registerFolderConfig`):
 
@@ -237,14 +237,14 @@ interface FolderCacheConfig {
 
 ```ts
 opfsServeRange(options: {
-  folderName: string;  // обязательно
-  order?: number;
-  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
+  folderName: string;
+  order?: number;            // по умолчанию 0
+  include: string[];
   exclude?: string[];
-  enableLogging?: boolean;
-  logger?: Logger; // по умолчанию console
-  rangeResponseCacheControl?: string; // по умолчанию '' (не кэшировать диапазоны в HTTP-кеше браузера)
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number }; // in-memory кеш 206-ответов; лимиты из конфига папки, если не заданы
+  enableLogging?: boolean;   // по умолчанию false
+  logger?: Logger;
+  rangeResponseCacheControl?: string;
+  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
   maxCacheFraction?: number;
   rangeCacheMaxSizeBytes?: number;
   rangeCacheMaxEntries?: number;
@@ -255,12 +255,12 @@ opfsServeRange(options: {
 
 ```ts
 opfsRangeFromNetworkAndCache(options: {
-  folderName: string;  // обязательно
-  order?: number;
-  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
+  folderName: string;
+  order?: number;            // по умолчанию 0
+  include: string[];
   exclude?: string[];
-  enableLogging?: boolean;
-  logger?: Logger; // по умолчанию console
+  enableLogging?: boolean;   // по умолчанию false
+  logger?: Logger;
   pinned?: string[];
   maxCacheFraction?: number;
 }): Plugin | undefined
@@ -270,12 +270,12 @@ opfsRangeFromNetworkAndCache(options: {
 
 ```ts
 opfsBackgroundFetch(options: {
-  folderName: string;  // обязательно
-  order?: number;
-  include: string[];  // обязательно, непустой; если после нормализации список пуст — возвращает undefined
+  folderName: string;
+  order?: number;            // по умолчанию 0
+  include: string[];
   exclude?: string[];
-  enableLogging?: boolean;
-  logger?: Logger; // по умолчанию console
+  enableLogging?: boolean;   // по умолчанию false
+  logger?: Logger;
   pinned?: string[];
   maxCacheFraction?: number;
 }): Plugin | undefined
@@ -285,9 +285,9 @@ opfsBackgroundFetch(options: {
 
 ```ts
 opfsBackgroundFetchFilter(options: {
-  include: string[];  // обязательно, непустой; если все паттерны нормализуются в пустой список — возвращает undefined
+  include: string[];
   exclude?: string[];
-  logger?: Logger; // по умолчанию console
+  logger?: Logger;
 }): Plugin | undefined
 ```
 
@@ -329,7 +329,7 @@ getRegisteredFolders(): Promise<FolderName[]>
 
 ```ts
 filterAssetsForOpfs(
-  assets: string[],  // pathname'ы, напр. '/video/1.mp4'
+  assets: string[],
   include?: string[],
   exclude?: string[]
 ): string[]
@@ -377,34 +377,19 @@ async function downloadForOfflineWithEstimatedSize(assets: string[], title: stri
 **Логика перед запуском:** запрашивается список зарегистрированных в SW папок (**getRegisteredFolders()**); если папка **folderName** не в списке или список пуст — промис отклоняется (OPFS_ERROR_FOLDER_NOT_REGISTERED или OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE). Затем из списка assets (после фильтра include/exclude) исключаются те, что уже качаются в других активных Background Fetch (pathname берутся из matchAll() по каждой активной регистрации с префиксом `opfs-ranges-`). Затем исключаются те, что уже есть в OPFS (один вызов **listOpfsCachedResources(folderName)**). Порядок такой специально: сначала «в процессе», потом «уже в кеше» — чтобы не пропустить только что завершившуюся загрузку. В загрузку уходит только то, что осталось. Если ничего не осталось, промис сразу выполняется с `written: assetsToUse` (ничего не качаем). Идентификатор загрузки считается по набору pathname'ов идемпотентно (getOpfsBackgroundFetchId). Если с тем же набором загрузка уже идёт, новый вызов не создаёт вторую, а подписывается на уже идущую (attach); промис выполнится при её завершении.
 
 ```ts
+startDownloadAssetsToOpfs(options: StartDownloadAssetsToOpfsOptions): Promise<DownloadAssetsToOpfsResult>
+
 interface StartDownloadAssetsToOpfsOptions {
-    /** Имя папки в OPFS (обязательно). Должно совпадать с folderName в opfsBackgroundFetch. */
     folderName: string;
-    /** Pathname'ы ресурсов для загрузки. Фильтруются по include/exclude со стороны SW. */
     assets: string[];
-    /** Заголовок для системного UI Background Fetch (например, уведомление на Android). */
     title?: string;
-    /** Иконки для системного UI Background Fetch (например, для уведомления на Android). */
-    icons?: {
-        src: string;
-        sizes?: string;
-        type?: string;
-    }[];
-    /** Суммарный размер загрузки в байтах (всех assets). Опционально; только для прогресса (onProgress и системный UI показывают «X из Y» или %). */
+    icons?: { src: string; sizes?: string; type?: string }[];
     totalDownloadSizeInBytes?: number;
-    /** Колбек прогресса: (скачано байт, всего байт). Вызывается при каждом progress Background Fetch. */
     onProgress?: (downloaded: number, total: number) => void;
-    /** Колбек после записи каждого файла в OPFS: (уже записанные pathname'ы, общее число файлов). */
     onFileWritten?: (loadedAssets: string[], totalCount: number) => void;
-    /** AbortSignal для отмены. При abort промис отклоняется с reason: 'abort'. */
     signal?: AbortSignal;
 }
-startDownloadAssetsToOpfs(options): Promise<DownloadAssetsToOpfsResult>
-```
 
-Тип результата **DownloadAssetsToOpfsResult**:
-
-```ts
 interface DownloadAssetsToOpfsResult {
     registrationId: string;
     assets?: string[];
@@ -412,19 +397,24 @@ interface DownloadAssetsToOpfsResult {
     failedOrSkipped?: string[];
     filteredOut?: string[];
 }
+
+interface DownloadAssetsToOpfsRejected {
+    registrationId: string;
+    reason: 'fail' | 'abort';
+}
 ```
 
-При reject: **DownloadAssetsToOpfsRejected** `{ registrationId: string; reason: 'fail' | 'abort' }` или **Error** (при ошибках старта у Error может быть `error.code`: **OPFS_ERROR_FOLDER_NOT_REGISTERED**, **OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE**). Для отображения в UI обрабатывайте ошибку через try/catch или .catch() и при необходимости проверяйте error?.code.
+Для отображения в UI обрабатывайте ошибку через try/catch или .catch() и при необходимости проверяйте error?.code.
 
 - **useDownloadAssetsToOpfs()** — React-хук. Возвращает функцию запуска загрузки, статус, прогресс по байтам и по файлам, **error** (заполняется при ошибке — можно показывать в UI), результат и функцию сброса. **startDownload** при ошибке отклоняет промис (те же коды); ошибка также попадает в состояние **error**. Для проверки кода используйте `error?.code` (OPFS_ERROR_FOLDER_NOT_REGISTERED и т.д.). При размонтировании загрузка не отменяется; отменить можно только вызовом reset(). При повторном нажатии «Скачать» с тем же набором файлов происходит подписка на уже идущую загрузку (attach). Требуется установленный React (peer dependency).
 
 ```ts
 useDownloadAssetsToOpfs(): {
-    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>; // при ошибке — reject
+    startDownload: (options: Omit<StartDownloadAssetsToOpfsOptions, 'signal'>) => Promise<void>;
     status: 'idle' | 'pending' | 'success' | 'failure' | 'aborted';
     progress: { downloaded: number; total: number } | null;
     fileProgress: { loadedAssets: string[]; totalCount: number } | null;
-    error: StartDownloadError | null; // для UI: error?.code (OPFS_ERROR_*)
+    error: StartDownloadError | null;
     data: DownloadAssetsToOpfsResult | null;
     reset: () => void;
 }
@@ -472,8 +462,6 @@ interface OpfsMessagePayload {
     loadedAssets?: string[];
     totalCount?: number;
 }
-
-// Каждая функция подписки: (handler: OpfsMessageHandler) => () => void
 ```
 
 Какие поля есть в `event.data`, зависит от типа сообщения (см. список выше и [описание поведения кеша](https://github.com/budarin/psw-plugin-opfs-serve-range/blob/master/docs/opfs-cache-behavior.ru.md)). Константы типов сообщений: OPFS_MSG_*, OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER, OPFS_RESPONSE_BACKGROUND_FETCH_FILTER.
@@ -486,11 +474,7 @@ interface OpfsMessagePayload {
 
 ```ts
 listOpfsCachedResources(folderName: string): Promise<OpfsCachedResource[]>
-```
 
-**OpfsCachedResource** (экспортируется из пакета):
-
-```ts
 interface OpfsCachedResource {
     url: string;
     size: number;
@@ -509,6 +493,67 @@ hasInOpfsCache(url: string, folderName: string): Promise<boolean>
 
 ```ts
 deleteFromOpfsCache(url: string, folderName: string): Promise<void>
+```
+
+### Переподключение плеера к OPFS после загрузки файла
+
+Когда файл (текущий источник video/audio) записан в OPFS через Background Fetch, можно переподключить плеер к тому же URL, чтобы последующие запросы шли из OPFS (например, для мгновенного перемотки). Используйте **onOPFSBackgroundFetchFileWritten** и **reconnectPlayerOnFileLoadedIntoOpfs**. Для **видео** во время смены источника показывается последний кадр (оверлей), оверлей убирается только когда новый источник уже отображается (события **playing** или **seeked**), поэтому нет чёрного экрана. Если у видео не были заданы явные размеры, на время переключения они фиксируются, затем снимаются — без изменения layout. Для аудио оверлей не используется.
+
+**reconnectPlayerOnFileLoadedIntoOpfs(element, payload, folderName, options?)**
+
+Вызывайте из обработчика **onOPFSBackgroundFetchFileWritten**. Если `payload.asset` совпадает с текущим источником элемента и файл есть в OPFS, переподключает плеер и восстанавливает состояние воспроизведения. Типы: **FileWrittenPayload**, **ReconnectPlayerOnFileLoadedIntoOpfsOptions** (ниже).
+
+```ts
+reconnectPlayerOnFileLoadedIntoOpfs(
+  element: HTMLMediaElement,
+  payload: FileWrittenPayload,
+  folderName: FolderName,
+  options?: ReconnectPlayerOnFileLoadedIntoOpfsOptions
+): Promise<void>
+
+interface FileWrittenPayload {
+    asset?: string;
+}
+
+interface ReconnectPlayerOnFileLoadedIntoOpfsOptions {
+    logger?: Logger;
+    debug?: boolean;  // по умолчанию false
+}
+
+interface UseReconnectPlayerOnFileLoadedIntoOpfsOptions extends ReconnectPlayerOnFileLoadedIntoOpfsOptions {
+    folderName: FolderName;
+}
+```
+
+**Пример (ванильный TS):**
+
+```ts
+import {
+    onOPFSBackgroundFetchFileWritten,
+    reconnectPlayerOnFileLoadedIntoOpfs,
+} from '@budarin/psw-plugin-opfs-serve-range/client';
+
+const video = document.querySelector('video');
+const folderName = 'video-cache';
+
+if (video) {
+    const unsubscribe = onOPFSBackgroundFetchFileWritten((event) => {
+        reconnectPlayerOnFileLoadedIntoOpfs(video, event.data, folderName).catch(() => {});
+    });
+}
+```
+
+**Пример (React):**
+
+```tsx
+import { useRef } from 'react';
+import { useReconnectPlayerOnFileLoadedIntoOpfs } from '@budarin/psw-plugin-opfs-serve-range/client/react';
+
+function VideoPlayer() {
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    useReconnectPlayerOnFileLoadedIntoOpfs(videoRef, { folderName: 'video-cache' });
+    return <video ref={videoRef} src="/video/lesson-1.mp4" controls />;
+}
 ```
 
 ---
@@ -537,11 +582,7 @@ writeToOpfs(
   metadata: OpfsMetadata,
   options: WriteToOpfsOptions
 ): Promise<void>
-```
 
-**OpfsMetadata** (возвращается из `metadataFromResponse`; `size` — из Content-Length или 0):
-
-```ts
 interface OpfsMetadata {
     url: string;
     size: number;
@@ -551,11 +592,7 @@ interface OpfsMetadata {
     lastAccessed?: number;
     evictable?: boolean;
 }
-```
 
-**WriteToOpfsOptions** (пятый аргумент `writeToOpfs`; нужен для лимитов кеша, эвикции и skip list):
-
-```ts
 interface WriteToOpfsOptions {
     folderName: string;
     url?: string;

@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.7.0 - 2026-03-12
+
+- **Switch player to OPFS when file is loaded:** **reconnectPlayerOnFileLoadedIntoOpfs(element, payload, folderName, options?)** — call from **onOPFSBackgroundFetchFileWritten** so that when the currently playing file is written to OPFS, the player reconnects to the same URL (served from cache) and restores playback state (position, paused, playbackRate, volume, muted). Optional **options**: `logger`, `debug` for diagnostics. **useReconnectPlayerOnFileLoadedIntoOpfs(mediaRef, options)** — React hook that subscribes to **onOPFSBackgroundFetchFileWritten** and calls the helper. Types: **FileWrittenPayload**, **ReconnectPlayerOnFileLoadedIntoOpfsOptions**.
+- **Video UX on reconnect:** For video, reconnecting no longer flashes a black frame: current frame is captured to a canvas overlay, source is switched, overlay is removed only after **playing** or **seeked** (when the new source is actually displaying). If the video had no explicit dimensions, they are fixed during switch and then cleared. Audio is unchanged (no overlay).
+- **Unified log format:** All package logs use **\[opfs-range] [sw]** (service worker) or **\[opfs-range] [client]** (page). Constants **OPFS_RANGE_LOG_SW** and **OPFS_RANGE_LOG_CLIENT** in **opfsLog.ts** (internal). Eases filtering and debugging when multiple OPFS plugins are used.
+- **Docs:** README and README.ru — section “Switch player to OPFS when file is loaded” with **reconnectPlayerOnFileLoadedIntoOpfs** and examples (vanilla TS and React). reference.md — client exports and Client React entry updated.
+
 ## 3.6.0 - 2026-03-12
 
 - **Background Fetch click behavior:** `opfsBackgroundFetch.backgroundfetchclick` now focuses an existing window client for the origin when the user clicks the system Background Fetch UI (download notification) or opens a new window via `clients.openWindow('/')` when no windows are open. This makes the default behavior on mobile/desktop consistent with user expectations: tapping the system download UI brings the user back into the PWA/app where the custom download UI can show final status.

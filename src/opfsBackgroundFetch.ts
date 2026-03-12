@@ -27,6 +27,7 @@ import {
     OPFS_REQUEST_GET_BACKGROUND_FETCH_FILTER,
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
 } from './opfsMessages.js';
+import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
 
 export interface OpfsBackgroundFetchFilterOptions {
     /**
@@ -205,7 +206,7 @@ export function opfsBackgroundFetch(
                     failedOrSkippedPathnames.push(pathname);
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: skip ${url} (filtered by include/exclude)`
+                            `${OPFS_RANGE_LOG_SW}skip ${url} (filtered by include/exclude)`
                         );
                     }
                     continue;
@@ -215,7 +216,7 @@ export function opfsBackgroundFetch(
                     notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: skip ${url} (in skip list, quota exceeded)`
+                            `${OPFS_RANGE_LOG_SW}skip ${url} (in skip list, quota exceeded)`
                         );
                     }
                     continue;
@@ -225,7 +226,7 @@ export function opfsBackgroundFetch(
                     failedOrSkippedPathnames.push(pathname);
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: skip ${url} (not ok or no body)`
+                            `${OPFS_RANGE_LOG_SW}skip ${url} (not ok or no body)`
                         );
                     }
                     continue;
@@ -250,13 +251,13 @@ export function opfsBackgroundFetch(
                     });
                     if (enableLogging) {
                         logger.debug(
-                            `opfsBackgroundFetch: cached ${url} -> ${key} (${metadata.size} bytes)`
+                            `${OPFS_RANGE_LOG_SW}cached ${url} -> ${key} (${metadata.size} bytes)`
                         );
                     }
                 } catch (err) {
                     failedOrSkippedPathnames.push(pathname);
                     logger.error(
-                        `opfsBackgroundFetch: write failed ${record.request.url}`,
+                        `${OPFS_RANGE_LOG_SW}write failed ${record.request.url}`,
                         err
                     );
                 }
@@ -281,7 +282,7 @@ export function opfsBackgroundFetch(
                 registrationId: event.registration.id,
             });
             logger.warn(
-                `opfsBackgroundFetch: background fetch failed, id=${event.registration.id}`
+                `${OPFS_RANGE_LOG_SW}background fetch failed, id=${event.registration.id}`
             );
             if (typeof event.updateUI === 'function') {
                 await event.updateUI({
@@ -297,7 +298,7 @@ export function opfsBackgroundFetch(
             });
             if (enableLogging) {
                 logger.debug(
-                    `opfsBackgroundFetch: background fetch aborted, id=${event.registration.id}`
+                    `${OPFS_RANGE_LOG_SW}background fetch aborted, id=${event.registration.id}`
                 );
             }
             if (typeof event.updateUI === 'function') {
@@ -311,7 +312,7 @@ export function opfsBackgroundFetch(
             const logger = context.logger!;
             if (enableLogging) {
                 logger.debug(
-                    `opfsBackgroundFetch: user clicked download UI, id=${event.registration.id}`
+                    `${OPFS_RANGE_LOG_SW}user clicked download UI, id=${event.registration.id}`
                 );
             }
             const windowClients = await self.clients.matchAll({ type: 'window' });
@@ -324,7 +325,7 @@ export function opfsBackgroundFetch(
                 await self.clients.openWindow('/');
             } catch (err) {
                 logger.error(
-                    'opfsBackgroundFetch: failed to open window on backgroundfetchclick',
+                    `${OPFS_RANGE_LOG_SW}failed to open window on backgroundfetchclick`,
                     err
                 );
             }

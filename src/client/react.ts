@@ -8,3 +8,7 @@ export {
     type DownloadAssetsStatus,
     type UseDownloadAssetsToOpfsState,
 } from './useDownloadAssetsToOpfs.js';
+export {
+    useReconnectPlayerOnFileLoadedIntoOpfs,
+    type UseReconnectPlayerOnFileLoadedIntoOpfsOptions,
+} from './useReconnectPlayerOnFileLoadedIntoOpfs.js';
