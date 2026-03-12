@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.6.0 - 2026-03-12
+
+- **Background Fetch click behavior:** `opfsBackgroundFetch.backgroundfetchclick` now focuses an existing window client for the origin when the user clicks the system Background Fetch UI (download notification) or opens a new window via `clients.openWindow('/')` when no windows are open. This makes the default behavior on mobile/desktop consistent with user expectations: tapping the system download UI brings the user back into the PWA/app where the custom download UI can show final status.
+
 ## 3.5.0 - 2026-03-12
 
 - **Background Fetch UI (system):** `startDownloadAssetsToOpfs` now accepts `icons` in options (forwarded to `BackgroundFetchUIOptions.icons`) so the browser’s built-in Background Fetch UI can use custom icons alongside `title` and `downloadTotal`. The service worker plugin `opfsBackgroundFetch` calls `event.updateUI()` on `backgroundfetchsuccess`, `backgroundfetchfail`, and `backgroundfetchabort` with neutral Russian titles ("Загрузка завершена", "Ошибка при загрузке", "Загрузка отменена") when the API is available, so the system UI reflects the final state of the download.
