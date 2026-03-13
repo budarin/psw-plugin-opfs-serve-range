@@ -4,8 +4,8 @@
  * Инвалидация по ключу (при эвикции файла из OPFS) и invalidateAll (при clearOpfsCache).
  */
 
+import { LRUCache } from './lruCache.js';
 import type { FolderName, OpfsKey } from './types.js';
-import { LRUCache } from 'lru-cache';
 
 /** Метаданные для 206 (источник — metadata cache, не range cache). Экспорт для типов. */
 export interface RangeCacheEntryMeta {

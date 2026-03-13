@@ -4,8 +4,8 @@
  * Инвалидация при эвикции (removeFromEvictionIndex) и при clearOpfsCache.
  */
 
+import { LRUCache } from './lruCache.js';
 import type { FolderName, OpfsKey } from './types.js';
-import { LRUCache } from 'lru-cache';
 
 export interface OpfsMetadataCacheEntry {
     fullSize: number;

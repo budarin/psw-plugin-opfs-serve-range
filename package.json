@@ -1,6 +1,6 @@
 {
     "name": "@budarin/psw-plugin-opfs-serve-range",
-    "version": "4.0.0",
+    "version": "4.0.1",
     "description": "Service Worker plugin: serve HTTP Range requests from OPFS files",
     "keywords": [
         "service-worker",
@@ -45,8 +45,7 @@
         }
     },
     "dependencies": {
-        "@budarin/http-constants": "^1.0.22",
-        "lru-cache": "^11.2.6"
+        "@budarin/http-constants": "^1.0.22"
     },
     "devDependencies": {
         "@budarin/pluggable-serviceworker": "^1.17.5",

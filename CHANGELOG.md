@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.1 - 2026-03-13
+
+- **Bundle size:** Replaced the `lru-cache` dependency (~17 KB) with a minimal in-house LRU implementation (`src/lruCache.ts`): doubly-linked list + Map, supporting max entries, optional byte limit (maxSize + sizeCalculation), and dispose callback. Same API surface for metadata and range caches; no breaking changes.
+
 ## 4.0.0 - 2026-03-13
 
 **Breaking:** Storage structure refactored to a **flat store**; global storage limit only; API signature changes. No migration from the previous layout — caches are not converted automatically.
