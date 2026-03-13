@@ -8,7 +8,7 @@
 import type { Logger } from '@budarin/pluggable-serviceworker';
 import type { FolderName, Pathname, UrlString } from '../types.js';
 import { OPFS_RANGE_LOG_CLIENT } from '../opfsLog.js';
-import { hasInOpfsCache } from './cacheControl.js';
+import { clearServedFromNetworkForReconnect, hasInOpfsCache } from './cacheControl.js';
 
 interface PlayerState {
     currentTime: number;
@@ -167,6 +167,9 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
             }
         }
     };
+
+    const pathname = new URL(url).pathname;
+    clearServedFromNetworkForReconnect(pathname);
 
     element.src = url;
     element.load();

@@ -4,7 +4,7 @@
  */
 
 import type { Plugin } from '@budarin/pluggable-serviceworker';
-import type { FolderName, UrlString } from './types.js';
+import type { FolderName, Pathname, UrlString } from './types.js';
 import {
     getRegisteredFolderNames,
     getOpfsDir,
@@ -17,21 +17,24 @@ import { ensureCachesPopulated, removeFromEvictionIndex } from './opfsEvictionIn
 import { getMetadataCache } from './opfsMetadataCache.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import {
-    OPFS_REQUEST_DELETE_FROM_CACHE,
-    OPFS_RESPONSE_DELETE_FROM_CACHE,
-    OPFS_REQUEST_HAS_IN_CACHE,
-    OPFS_RESPONSE_HAS_IN_CACHE,
-    OPFS_REQUEST_LIST_CACHED_RESOURCES,
-    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+    OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
     OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_REQUEST_DELETE_FROM_CACHE,
+    OPFS_REQUEST_HAS_IN_CACHE,
+    OPFS_REQUEST_LIST_CACHED_RESOURCES,
     OPFS_RESPONSE_CLEAR_CACHE,
+    OPFS_RESPONSE_DELETE_FROM_CACHE,
+    OPFS_RESPONSE_HAS_IN_CACHE,
+    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
 } from './opfsMessages.js';
+import { removeUrlServedFromNetwork } from './opfsPerTabNetworkUrls.js';
 
 interface CacheControlPayload {
     type?: string;
     requestId?: string;
     url?: UrlString;
     folderName?: FolderName;
+    pathname?: Pathname;
 }
 
 interface ListResource {
@@ -66,10 +69,24 @@ export function opfsCacheControl(): Plugin | undefined {
 
         async message(event): Promise<void> {
             const data = event.data as CacheControlPayload | null;
+            const source = event.source;
+
+            if (data?.type === OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK) {
+                const pathname = data.pathname;
+                const clientId = (source as Client | undefined)?.id;
+                if (
+                    typeof pathname === 'string' &&
+                    pathname.length > 0 &&
+                    typeof clientId === 'string'
+                ) {
+                    removeUrlServedFromNetwork(clientId, pathname as Pathname);
+                }
+                return;
+            }
+
             if (data?.requestId == null) {
                 return;
             }
-            const source = event.source;
             const { requestId, folderName } = data;
 
             if (data.type === OPFS_REQUEST_DELETE_FROM_CACHE) {

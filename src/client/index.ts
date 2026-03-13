@@ -28,6 +28,7 @@ export {
     OPFS_REQUEST_LIST_CACHED_RESOURCES,
     OPFS_RESPONSE_LIST_CACHED_RESOURCES,
     OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
     OPFS_RESPONSE_CLEAR_CACHE,
 } from '../opfsMessages.js';
 export type { OpfsMessageType } from '../opfsMessages.js';
@@ -53,10 +54,11 @@ export {
 
 export type { OpfsCachedResource } from './cacheControl.js';
 export {
-    listOpfsCachedResources,
-    hasInOpfsCache,
-    deleteFromOpfsCache,
     clearOpfsCache,
+    clearServedFromNetworkForReconnect,
+    deleteFromOpfsCache,
+    hasInOpfsCache,
+    listOpfsCachedResources,
 } from './cacheControl.js';
 
 export type {

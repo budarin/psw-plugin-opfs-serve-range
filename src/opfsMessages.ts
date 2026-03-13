@@ -54,6 +54,9 @@ export const OPFS_REQUEST_CLEAR_CACHE = 'OPFS_REQUEST_CLEAR_CACHE';
 /** Ответ SW (requestId, ok: boolean, error?: string). */
 export const OPFS_RESPONSE_CLEAR_CACHE = 'OPFS_RESPONSE_CLEAR_CACHE';
 
+/** Запрос клиента: сбросить для вкладки учёт «URL отдан из сети» по pathname (перед reconnect плеера). Fire-and-forget, без ответа. */
+export const OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK = 'OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK';
+
 /** Префикс идентификатора загрузки Background Fetch: плагин opfsBackgroundFetch обрабатывает только события с id, начинающимся с этой строки. */
 export const OPFS_BACKGROUND_FETCH_ID_PREFIX = 'opfs-ranges-';
 

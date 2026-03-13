@@ -100,6 +100,7 @@ export {
     OPFS_RESPONSE_LIST_CACHED_RESOURCES,
     OPFS_REQUEST_CLEAR_CACHE,
     OPFS_RESPONSE_CLEAR_CACHE,
+    OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
 } from './opfsMessages.js';
 export type { OpfsMessageType } from './opfsMessages.js';
 export type { WriteToOpfsOptions } from './opfsWrite.js';

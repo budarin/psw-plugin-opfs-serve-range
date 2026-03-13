@@ -48,3 +48,15 @@ export function isUrlServedFromNetworkForClient(clientId: string, pathname: Path
     }
     return urlsServedFromNetworkByClient.get(clientId)?.has(pathname) ?? false;
 }
+
+/**
+ * Удаляет pathname из учёта «отдавали из сети» для данной вкладки.
+ * Вызывать при явном переподключении плеера (reconnect), чтобы следующие запросы по этому URL
+ * обслуживались из OPFS, если файл в кэше, либо из сети при passthrough.
+ */
+export function removeUrlServedFromNetwork(clientId: string, pathname: Pathname): void {
+    if (!clientId) {
+        return;
+    }
+    urlsServedFromNetworkByClient.get(clientId)?.delete(pathname);
+}

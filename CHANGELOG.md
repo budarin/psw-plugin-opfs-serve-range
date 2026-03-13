@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.5 - 2026-03-13
+
+- Version bump.
+
 ## 4.0.4 - 2026-03-13
 
 - **Reference and API:** Project reference (`.cursor/rules/reference.mdc`) updated to match current implementation: in-memory eviction index, single physical OPFS directory, logical folderName in metadata, skip list, cache control request/response. **CreateOpfsServePluginsBaseOptions** — shared base type for **CreateOpfsServeAndBackgroundFetchPluginsOptions** and **CreateOpfsServeAndNetworkCachePluginsOptions** to avoid duplication.

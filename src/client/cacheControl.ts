@@ -2,16 +2,17 @@
  * Запросы к плагину opfsCacheControl: list, has, delete, clear.
  */
 
-import type { FolderName, UrlString } from '../types.js';
+import type { FolderName, Pathname, UrlString } from '../types.js';
 import {
-    OPFS_REQUEST_DELETE_FROM_CACHE,
-    OPFS_RESPONSE_DELETE_FROM_CACHE,
-    OPFS_REQUEST_HAS_IN_CACHE,
-    OPFS_RESPONSE_HAS_IN_CACHE,
-    OPFS_REQUEST_LIST_CACHED_RESOURCES,
-    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+    OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
     OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_REQUEST_DELETE_FROM_CACHE,
+    OPFS_REQUEST_HAS_IN_CACHE,
+    OPFS_REQUEST_LIST_CACHED_RESOURCES,
     OPFS_RESPONSE_CLEAR_CACHE,
+    OPFS_RESPONSE_DELETE_FROM_CACHE,
+    OPFS_RESPONSE_HAS_IN_CACHE,
+    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
 } from '../opfsMessages.js';
 
 export interface OpfsCachedResource {
@@ -123,6 +124,28 @@ export async function deleteFromOpfsCache(url: UrlString): Promise<void> {
         OPFS_RESPONSE_DELETE_FROM_CACHE,
         { requestId, url }
     );
+}
+
+/**
+ * Сбрасывает для текущей вкладки учёт «URL отдан из сети» по pathname.
+ * Вызывать перед element.load() при переподключении плеера к тому же URL (reconnect),
+ * чтобы следующие запросы по этому URL обслуживались из OPFS, если файл в кэше.
+ * Fire-and-forget: ответ от SW не ожидается.
+ */
+export function clearServedFromNetworkForReconnect(pathname: Pathname): void {
+    if (
+        typeof navigator === 'undefined' ||
+        navigator.serviceWorker?.controller == null
+    ) {
+        return;
+    }
+    if (typeof pathname !== 'string' || pathname.length === 0) {
+        return;
+    }
+    navigator.serviceWorker.controller.postMessage({
+        type: OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
+        pathname,
+    });
 }
 
 /**
