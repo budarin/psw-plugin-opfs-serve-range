@@ -30,15 +30,18 @@ import {
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
     OPFS_REQUEST_GET_REGISTERED_FOLDERS,
     OPFS_RESPONSE_REGISTERED_FOLDERS,
+    OPFS_REQUEST_DELETE_FROM_CACHE,
+    OPFS_RESPONSE_DELETE_FROM_CACHE,
+    OPFS_REQUEST_HAS_IN_CACHE,
+    OPFS_RESPONSE_HAS_IN_CACHE,
+    OPFS_REQUEST_LIST_CACHED_RESOURCES,
+    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+    OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_RESPONSE_CLEAR_CACHE,
 } from '../opfsMessages.js';
 import type { FolderName, Pathname, UrlString } from '../types.js';
-import { getOpfsDir, getRoot, shouldProcessFile } from '../opfsUtil.js';
+import { shouldProcessFile } from '../opfsUtil.js';
 import { getOpfsBackgroundFetchId } from './opfsBackgroundFetchId.js';
-import {
-    readMetadataFromFileFooter,
-    type OpfsMetadata,
-} from '../opfsFormat.js';
-import { urlToOpfsKey } from '../opfsKey.js';
 import { OPFS_RANGE_LOG_CLIENT } from '../opfsLog.js';
 
 export {
@@ -59,6 +62,14 @@ export {
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
     OPFS_REQUEST_GET_REGISTERED_FOLDERS,
     OPFS_RESPONSE_REGISTERED_FOLDERS,
+    OPFS_REQUEST_DELETE_FROM_CACHE,
+    OPFS_RESPONSE_DELETE_FROM_CACHE,
+    OPFS_REQUEST_HAS_IN_CACHE,
+    OPFS_RESPONSE_HAS_IN_CACHE,
+    OPFS_REQUEST_LIST_CACHED_RESOURCES,
+    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+    OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_RESPONSE_CLEAR_CACHE,
 } from '../opfsMessages.js';
 export type { OpfsMessageType } from '../opfsMessages.js';
 
@@ -323,6 +334,49 @@ export async function getRegisteredFolders(): Promise<FolderName[]> {
     });
 }
 
+const CACHE_CONTROL_REQUEST_TIMEOUT_MS = 2000;
+
+/**
+ * Отправляет запрос плагину opfsCacheControl и ждёт ответ с тем же requestId.
+ * Таймаут 2 с. При error в ответе — reject с сообщением.
+ */
+function sendCacheControlRequest(
+    requestType: string,
+    responseType: string,
+    payload: { requestId: string; url?: UrlString; folderName?: FolderName },
+    timeoutMs: number = CACHE_CONTROL_REQUEST_TIMEOUT_MS
+): Promise<Record<string, unknown>> {
+    const controller = navigator.serviceWorker?.controller;
+    if (!controller) {
+        return Promise.reject(
+            new Error('OPFS: service worker not controlling this page')
+        );
+    }
+    const { requestId } = payload;
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            reject(new Error('OPFS: cache control request timeout'));
+        }, timeoutMs);
+        const onMessage = (event: MessageEvent): void => {
+            const data = event.data as Record<string, unknown> | null;
+            if (data?.['type'] !== responseType || data['requestId'] !== requestId) {
+                return;
+            }
+            clearTimeout(timer);
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            const err = data['error'] as string | undefined;
+            if (typeof err === 'string' && err) {
+                reject(new Error(err));
+                return;
+            }
+            resolve(data);
+        };
+        navigator.serviceWorker.addEventListener('message', onMessage);
+        controller.postMessage({ type: requestType, ...payload });
+    });
+}
+
 /**
  * Фильтрует assets (pathname'ы) по include/exclude (те же правила, что в opfsBackgroundFetch).
  */
@@ -340,78 +394,47 @@ export function filterAssetsForOpfs(
     );
 }
 
-async function getOpfsCacheDirOrUndefined(
-    folderName: FolderName
-): Promise<FileSystemDirectoryHandle | undefined> {
-    if (
-        typeof navigator === 'undefined' ||
-        navigator?.storage == null ||
-        typeof navigator.storage.getDirectory !== 'function'
-    ) {
-        return undefined;
-    }
-    const root = await getRoot();
-    try {
-        return await getOpfsDir(root, false, folderName);
-    } catch {
-        return undefined;
-    }
-}
-
-async function readMetadataFromFile(
-    file: File
-): Promise<OpfsMetadata | undefined> {
-    const { metadata } = await readMetadataFromFileFooter(file);
-    return metadata ?? undefined;
-}
-
 export async function listOpfsCachedResources(
     folderName: FolderName
 ): Promise<OpfsCachedResource[]> {
-    const dir = await getOpfsCacheDirOrUndefined(folderName);
-    if (!dir) {
+    if (
+        typeof navigator === 'undefined' ||
+        navigator?.serviceWorker?.controller == null
+    ) {
         return [];
     }
-    const fileHandles: FileSystemFileHandle[] = [];
-    for await (const [, handle] of dir.entries()) {
-        if (handle.kind === 'file') {
-            fileHandles.push(handle as FileSystemFileHandle);
-        }
+    const requestId = `opfs-list-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    try {
+        const data = await sendCacheControlRequest(
+            OPFS_REQUEST_LIST_CACHED_RESOURCES,
+            OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+            { requestId, folderName }
+        );
+        const resources = data['resources'];
+        return Array.isArray(resources) ? (resources as OpfsCachedResource[]) : [];
+    } catch {
+        return [];
     }
-    const results = await Promise.all(
-        fileHandles.map(async (handle): Promise<OpfsCachedResource | null> => {
-            try {
-                const file = await handle.getFile();
-                const metadata = await readMetadataFromFile(file);
-                if (!metadata || !metadata.url) {
-                    return null;
-                }
-                return {
-                    url: metadata.url,
-                    size: metadata.size,
-                    type: metadata.type,
-                    lastModified: metadata.lastModified,
-                };
-            } catch {
-                return null;
-            }
-        })
-    );
-    return results.filter((r): r is OpfsCachedResource => r !== null);
 }
 
 export async function hasInOpfsCache(
     url: UrlString,
     folderName: FolderName
 ): Promise<boolean> {
-    const dir = await getOpfsCacheDirOrUndefined(folderName);
-    if (!dir) {
+    if (
+        typeof navigator === 'undefined' ||
+        navigator?.serviceWorker?.controller == null
+    ) {
         return false;
     }
-    const key = await urlToOpfsKey(url);
+    const requestId = `opfs-has-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     try {
-        await dir.getFileHandle(key);
-        return true;
+        const data = await sendCacheControlRequest(
+            OPFS_REQUEST_HAS_IN_CACHE,
+            OPFS_RESPONSE_HAS_IN_CACHE,
+            { requestId, url, folderName }
+        );
+        return data['has'] === true;
     } catch {
         return false;
     }
@@ -421,16 +444,38 @@ export async function deleteFromOpfsCache(
     url: UrlString,
     folderName: FolderName
 ): Promise<void> {
-    const dir = await getOpfsCacheDirOrUndefined(folderName);
-    if (!dir) {
+    if (
+        typeof navigator === 'undefined' ||
+        navigator?.serviceWorker?.controller == null
+    ) {
         return;
     }
-    const key = await urlToOpfsKey(url);
-    try {
-        await dir.removeEntry(key);
-    } catch {
-        // нет файла — не ошибка
+    const requestId = `opfs-delete-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    await sendCacheControlRequest(
+        OPFS_REQUEST_DELETE_FROM_CACHE,
+        OPFS_RESPONSE_DELETE_FROM_CACHE,
+        { requestId, url, folderName }
+    );
+}
+
+/**
+ * Полная очистка папки кэша в OPFS. Шлёт запрос в SW (плагин opfsCacheControl).
+ */
+export async function clearOpfsCache(
+    folderName: FolderName
+): Promise<void> {
+    if (
+        typeof navigator === 'undefined' ||
+        navigator?.serviceWorker?.controller == null
+    ) {
+        throw new Error('OPFS: service worker not controlling this page');
     }
+    const requestId = `opfs-clear-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    await sendCacheControlRequest(
+        OPFS_REQUEST_CLEAR_CACHE,
+        OPFS_RESPONSE_CLEAR_CACHE,
+        { requestId, folderName }
+    );
 }
 
 // --- reconnectPlayerOnFileLoadedIntoOpfs (ядро + хэлпер) ---

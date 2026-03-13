@@ -34,6 +34,26 @@ export const OPFS_REQUEST_GET_REGISTERED_FOLDERS = 'OPFS_REQUEST_GET_REGISTERED_
 /** Ответ SW на OPFS_REQUEST_GET_REGISTERED_FOLDERS (requestId, folderNames: string[]). */
 export const OPFS_RESPONSE_REGISTERED_FOLDERS = 'OPFS_RESPONSE_REGISTERED_FOLDERS';
 
+/** Запрос клиента: удалить ресурс из кэша (requestId, url, folderName). Ответ — OPFS_RESPONSE_DELETE_FROM_CACHE. */
+export const OPFS_REQUEST_DELETE_FROM_CACHE = 'OPFS_REQUEST_DELETE_FROM_CACHE';
+/** Ответ SW (requestId, ok: boolean, error?: string). */
+export const OPFS_RESPONSE_DELETE_FROM_CACHE = 'OPFS_RESPONSE_DELETE_FROM_CACHE';
+
+/** Запрос клиента: есть ли URL в кэше (requestId, url, folderName). Ответ — OPFS_RESPONSE_HAS_IN_CACHE. */
+export const OPFS_REQUEST_HAS_IN_CACHE = 'OPFS_REQUEST_HAS_IN_CACHE';
+/** Ответ SW (requestId, has: boolean, error?: string). */
+export const OPFS_RESPONSE_HAS_IN_CACHE = 'OPFS_RESPONSE_HAS_IN_CACHE';
+
+/** Запрос клиента: список ресурсов в кэше (requestId, folderName). Ответ — OPFS_RESPONSE_LIST_CACHED_RESOURCES. */
+export const OPFS_REQUEST_LIST_CACHED_RESOURCES = 'OPFS_REQUEST_LIST_CACHED_RESOURCES';
+/** Ответ SW (requestId, resources: OpfsCachedResource[], error?: string). */
+export const OPFS_RESPONSE_LIST_CACHED_RESOURCES = 'OPFS_RESPONSE_LIST_CACHED_RESOURCES';
+
+/** Запрос клиента: полная очистка папки кэша (requestId, folderName). Ответ — OPFS_RESPONSE_CLEAR_CACHE. */
+export const OPFS_REQUEST_CLEAR_CACHE = 'OPFS_REQUEST_CLEAR_CACHE';
+/** Ответ SW (requestId, ok: boolean, error?: string). */
+export const OPFS_RESPONSE_CLEAR_CACHE = 'OPFS_RESPONSE_CLEAR_CACHE';
+
 /** Префикс идентификатора загрузки Background Fetch: плагин opfsBackgroundFetch обрабатывает только события с id, начинающимся с этой строки. */
 export const OPFS_BACKGROUND_FETCH_ID_PREFIX = 'opfs-ranges-';
 

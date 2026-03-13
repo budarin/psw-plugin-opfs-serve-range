@@ -10,6 +10,7 @@ import type { FolderName } from './types.js';
 import { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 import { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
 import { opfsRegisteredFolders } from './opfsRegisteredFolders.js';
+import { opfsCacheControl } from './opfsCacheControl.js';
 import { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js';
 
 export {
@@ -88,6 +89,14 @@ export {
     OPFS_RESPONSE_BACKGROUND_FETCH_FILTER,
     OPFS_REQUEST_GET_REGISTERED_FOLDERS,
     OPFS_RESPONSE_REGISTERED_FOLDERS,
+    OPFS_REQUEST_DELETE_FROM_CACHE,
+    OPFS_RESPONSE_DELETE_FROM_CACHE,
+    OPFS_REQUEST_HAS_IN_CACHE,
+    OPFS_RESPONSE_HAS_IN_CACHE,
+    OPFS_REQUEST_LIST_CACHED_RESOURCES,
+    OPFS_RESPONSE_LIST_CACHED_RESOURCES,
+    OPFS_REQUEST_CLEAR_CACHE,
+    OPFS_RESPONSE_CLEAR_CACHE,
 } from './opfsMessages.js';
 export type { OpfsMessageType } from './opfsMessages.js';
 export type { WriteToOpfsOptions } from './opfsWrite.js';
@@ -162,7 +171,8 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
-    return [serve, filterPlugin, registeredFoldersPlugin, bf].filter((p): p is Plugin => p !== undefined);
+    const cacheControl = opfsCacheControl();
+    return [serve, filterPlugin, registeredFoldersPlugin, cacheControl, bf].filter((p): p is Plugin => p !== undefined);
 }
 
 /**
@@ -184,7 +194,8 @@ export function createOpfsServeAndNetworkCachePlugins(
         ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
-    return [serve, networkCache].filter((p): p is Plugin => p !== undefined);
+    const cacheControl = opfsCacheControl();
+    return [serve, cacheControl, networkCache].filter((p): p is Plugin => p !== undefined);
 }
 
 export {
@@ -200,6 +211,7 @@ export { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js'
 export type { OpfsRangeFromNetworkAndCacheOptions } from './opfsRangeFromNetworkAndCache.js';
 export { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
 export { opfsRegisteredFolders } from './opfsRegisteredFolders.js';
+export { opfsCacheControl } from './opfsCacheControl.js';
 export type {
     OpfsBackgroundFetchOptions,
     OpfsBackgroundFetchFilterOptions,
