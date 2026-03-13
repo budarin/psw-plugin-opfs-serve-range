@@ -85,6 +85,17 @@ describe('normalizePatternList', () => {
         expect(r.dropped.crossOrigin).toEqual(['https://other.com/x']);
         expect(r.dropped.invalid).toContain('http://[');
     });
+
+    it('trims pattern whitespace', () => {
+        const r = normalizePatternList(['  /video/*  ', ' *.mp4 '], baseOrigin);
+        expect(r.list).toEqual(['/video/*', '*.mp4']);
+    });
+
+    it('returns list unchanged when baseOrigin is empty (no cross-origin filtering)', () => {
+        const r = normalizePatternList(['https://example.com/a', '/b'], '');
+        expect(r.list).toEqual(['https://example.com/a', '/b']);
+        expect(r.dropped.crossOrigin).toHaveLength(0);
+    });
 });
 
 describe('emitDroppedPatternWarnings', () => {
@@ -139,6 +150,32 @@ describe('shouldProcessFile', () => {
     it('returns false for same-origin URL matching exclude', () => {
         runWithSelfRestore(() => {
             expect(shouldProcessFile('https://example.com/private/x', ['*'], ['/private/*'])).toBe(false);
+        });
+    });
+
+    it('returns false when include is empty or undefined', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/video/1.mp4', [], undefined)).toBe(false);
+            expect(shouldProcessFile('https://example.com/video/1.mp4', undefined, undefined)).toBe(false);
+        });
+    });
+
+    it('returns true when URL matches any include pattern', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/assets/video.mp4', ['/assets/*', '/static/*'], undefined)).toBe(true);
+            expect(shouldProcessFile('https://example.com/static/x', ['/assets/*', '/static/*'], undefined)).toBe(true);
+        });
+    });
+
+    it('returns false when URL matches no include pattern', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/other/x', ['/video/*', '*.mp4'], undefined)).toBe(false);
+        });
+    });
+
+    it('exclude takes precedence over include', () => {
+        runWithSelfRestore(() => {
+            expect(shouldProcessFile('https://example.com/video/secret.mp4', ['/video/*'], ['/video/secret*'])).toBe(false);
         });
     });
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { getCacheLimit, computeEvictionSet, type StorageEstimate } from '../src/opfsLru.ts';
+import {
+    getCacheLimit,
+    computeEvictionSet,
+    getTotalCacheSize,
+    type StorageEstimate,
+    type CacheFileEntry,
+} from '../src/opfsLru.ts';
 import type { EvictionIndexEntry } from '../src/opfsEvictionIndex.ts';
 
 describe('getCacheLimit', () => {
@@ -64,5 +70,37 @@ describe('computeEvictionSet', () => {
         const entries: EvictionIndexEntry[] = [];
         const keys = computeEvictionSet(entries, 1000);
         expect(keys).toEqual([]);
+    });
+
+    it('evicts minimal set when needToFree exactly matches one entry', () => {
+        const entries: EvictionIndexEntry[] = [
+            { key: 'a', size: 100, lastAccessed: 10 },
+            { key: 'b', size: 200, lastAccessed: 20 },
+        ];
+        const keys = computeEvictionSet(entries, 100);
+        expect(keys).toEqual(['a']);
+    });
+
+    it('evicts in LRU order (oldest first)', () => {
+        const entries: EvictionIndexEntry[] = [
+            { key: 'new', size: 50, lastAccessed: 100 },
+            { key: 'old', size: 50, lastAccessed: 10 },
+        ];
+        const keys = computeEvictionSet(entries, 50);
+        expect(keys).toEqual(['old']);
+    });
+});
+
+describe('getTotalCacheSize', () => {
+    it('sums sizes of all entries', () => {
+        const entries: CacheFileEntry[] = [
+            { key: 'a', size: 100, lastAccessed: 0, evictable: true },
+            { key: 'b', size: 200, lastAccessed: 0, evictable: true },
+        ];
+        expect(getTotalCacheSize(entries)).toBe(300);
+    });
+
+    it('returns 0 for empty array', () => {
+        expect(getTotalCacheSize([])).toBe(0);
     });
 });
