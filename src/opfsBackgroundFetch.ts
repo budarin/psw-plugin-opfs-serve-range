@@ -17,8 +17,8 @@ import { urlToOpfsKey } from './opfsKey.js';
 import { isOpfsAvailable, isEvictable, shouldProcessFile } from './opfsUtil.js';
 import { writeToOpfs, metadataFromResponse } from './opfsWrite.js';
 import { isInSkipList } from './opfsLru.js';
+import { getOpfsBackgroundFetchIdPrefixForFolder } from './opfsBackgroundFetchId.js';
 import {
-    OPFS_BACKGROUND_FETCH_ID_PREFIX,
     OPFS_MSG_SKIP_QUOTA_EXCEEDED,
     OPFS_MSG_BACKGROUND_FETCH_FAILED,
     OPFS_MSG_BACKGROUND_FETCH_ABORTED,
@@ -180,7 +180,8 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchsuccess(event, context: PluginContext): Promise<void> {
-            if (!event.registration.id.startsWith(OPFS_BACKGROUND_FETCH_ID_PREFIX)) {
+            const idPrefixForFolder = getOpfsBackgroundFetchIdPrefixForFolder(folderName);
+            if (!event.registration.id.startsWith(idPrefixForFolder)) {
                 return;
             }
             const logger = context.logger ?? console;
@@ -272,6 +273,9 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchfail(event, context: PluginContext): Promise<void> {
+            if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
+                return;
+            }
             const logger = context.logger!;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
                 registrationId: event.registration.id,
@@ -287,6 +291,9 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchabort(event, context: PluginContext): Promise<void> {
+            if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
+                return;
+            }
             const logger = context.logger!;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_ABORTED, {
                 registrationId: event.registration.id,

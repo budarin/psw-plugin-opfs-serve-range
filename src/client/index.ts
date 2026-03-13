@@ -887,7 +887,7 @@ export async function startDownloadAssetsToOpfs(
             ...(filteredOut.length > 0 && { filteredOut }),
         };
     }
-    const id = await getOpfsBackgroundFetchId(assetsToFetch);
+    const id = await getOpfsBackgroundFetchId(assetsToFetch, folderName);
     if (ourActiveIds.includes(id)) {
         const bfReg_1 = await getBackgroundFetchRegistration(reg, id);
         if (bfReg_1) {

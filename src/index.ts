@@ -54,6 +54,10 @@ export {
     type RangeCacheBlobHit,
 } from './opfsRangeCache.js';
 export { urlToOpfsKey } from './opfsKey.js';
+export {
+    getOpfsBackgroundFetchId,
+    getOpfsBackgroundFetchIdPrefixForFolder,
+} from './opfsBackgroundFetchId.js';
 
 export {
     isInSkipList,
