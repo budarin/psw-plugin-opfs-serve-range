@@ -2,8 +2,8 @@
  * Общие утилиты: glob, папка плагина в OPFS, очистка, реестр папок по плагинам.
  */
 
-import type { FolderName, UrlString } from './types.js';
-import { invalidateCacheForDir } from './opfsEvictionIndex.js';
+import type { FolderName, OpfsKey, UrlString } from './types.js';
+import { invalidateCacheForDir, removeFromEvictionIndex } from './opfsEvictionIndex.js';
 import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
 import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
@@ -26,10 +26,11 @@ export function setGlobalMaxCacheFraction(fraction: number): void {
     globalMaxCacheFraction = fraction;
 }
 
-/** Только для тестов: сброс реестра папок и глобального лимита. */
+/** Только для тестов: сброс реестра папок, глобального лимита и кеша корня плагина. */
 export function resetFolderRegistryForTests(): void {
     folderRegistry.clear();
     globalMaxCacheFraction = 0.5;
+    cachedPluginRootPromise = null;
 }
 
 /** Конфиг кеша для одной папки (лимиты). При повторной регистрации того же folderName должен совпадать. */
@@ -178,6 +179,14 @@ export function getRegisteredFolderNames(): FolderName[] {
 let cachedRootPromise: Promise<FileSystemDirectoryHandle> | null = null;
 
 /**
+ * Имя корневой папки плагина в OPFS. Все кеши плагина лежат внутри неё, чтобы не смешиваться
+ * с папками других приложений в корне OPFS. Точка в начале — признак служебной папки.
+ */
+export const OPFS_PLUGIN_ROOT_DIR_NAME = '.opfs-serve-range';
+
+let cachedPluginRootPromise: Promise<FileSystemDirectoryHandle> | null = null;
+
+/**
  * Возвращает корень OPFS с кешированием на время жизни воркера.
  * Избегает повторных вызовов navigator.storage.getDirectory() при частых запросах.
  */
@@ -186,6 +195,20 @@ export function getRoot(): Promise<FileSystemDirectoryHandle> {
         cachedRootPromise = navigator.storage.getDirectory();
     }
     return cachedRootPromise;
+}
+
+/**
+ * Возвращает корневую папку плагина в OPFS (OPFS_PLUGIN_ROOT_DIR_NAME). Создаётся при отсутствии.
+ * Кешируется на время жизни воркера. Все папки кешей (folderName) лежат внутри неё.
+ */
+export async function getPluginRoot(): Promise<FileSystemDirectoryHandle> {
+    if (cachedPluginRootPromise === null) {
+        const root = await getRoot();
+        cachedPluginRootPromise = root.getDirectoryHandle(OPFS_PLUGIN_ROOT_DIR_NAME, {
+            create: true,
+        });
+    }
+    return cachedPluginRootPromise;
 }
 
 /**
@@ -298,15 +321,27 @@ export function shouldProcessFile(
 const dirCacheByFolder = new Map<string, FileSystemDirectoryHandle>();
 
 /**
- * Возвращает папку в OPFS по имени. Все файлы кеша для этой папки лежат только в ней.
+ * Сбрасывает кеш корневой папки плагина и инвалидирует in-memory кэши для всех зарегистрированных папок.
+ * Вызывать при ошибке доступа к папке под плагин-корнем (уровень «корневая папка»).
+ */
+export function invalidateAllCachesAndPluginRoot(): void {
+    cachedPluginRootPromise = null;
+    for (const fn of getRegisteredFolderNames()) {
+        invalidateAllCachesForFolder(fn);
+    }
+}
+
+/**
+ * Возвращает папку кеша в OPFS по имени. Путь: корень OPFS → OPFS_PLUGIN_ROOT_DIR_NAME → folderName.
  * Результат кешируется; при clearOpfsCache кеш для папки сбрасывается.
+ * При ошибке доступа к папке (например корень плагина удалён) выполняет инвалидацию уровня «корневая папка» и одну повторную попытку.
  *
- * @param root — корень OPFS (navigator.storage.getDirectory())
+ * @param _root — корень OPFS (для совместимости API; фактически используется getPluginRoot())
  * @param create — если true, создаёт папку при отсутствии; если false, при отсутствии будет выброшена ошибка
- * @param folderName — имя папки (обязательно, задаётся в опциях плагина)
+ * @param folderName — имя папки кеша (обязательно, задаётся в опциях плагина)
  */
 export async function getOpfsDir(
-    root: FileSystemDirectoryHandle,
+    _root: FileSystemDirectoryHandle,
     create: boolean,
     folderName: FolderName
 ): Promise<FileSystemDirectoryHandle> {
@@ -314,9 +349,35 @@ export async function getOpfsDir(
     if (cached !== undefined) {
         return cached;
     }
-    const dir = await root.getDirectoryHandle(folderName, { create });
-    dirCacheByFolder.set(folderName, dir);
-    return dir;
+    const pluginRoot = await getPluginRoot();
+    try {
+        const dir = await pluginRoot.getDirectoryHandle(folderName, { create });
+        dirCacheByFolder.set(folderName, dir);
+        return dir;
+    } catch {
+        invalidateAllCachesAndPluginRoot();
+        const pluginRootRetry = await getPluginRoot();
+        const dir = await pluginRootRetry.getDirectoryHandle(folderName, { create });
+        dirCacheByFolder.set(folderName, dir);
+        return dir;
+    }
+}
+
+/**
+ * Инвалидирует кэши по одному ключу (metadata, range, eviction index).
+ * При ошибке (например папка удалена и dir невалиден) эскалирует в полную инвалидацию папки.
+ * Вызывать при файловой ошибке чтения (getFileHandle/getFile/футер), чтобы не отдавать устаревшие данные.
+ */
+export async function invalidateCachesForFileKeyOnError(
+    dir: FileSystemDirectoryHandle,
+    folderName: FolderName,
+    key: OpfsKey
+): Promise<void> {
+    try {
+        await removeFromEvictionIndex(dir, [key], folderName);
+    } catch {
+        invalidateAllCachesForFolder(folderName);
+    }
 }
 
 /**
@@ -337,9 +398,9 @@ export function invalidateAllCachesForFolder(folderName: FolderName): void {
  */
 export async function clearOpfsCache(folderName: FolderName): Promise<void> {
     invalidateAllCachesForFolder(folderName);
-    const root = await getRoot();
+    const pluginRoot = await getPluginRoot();
     try {
-        await root.removeEntry(folderName, { recursive: true });
+        await pluginRoot.removeEntry(folderName, { recursive: true });
     } catch {
         // папки не было — не ошибка
     }

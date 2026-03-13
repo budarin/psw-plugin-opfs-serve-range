@@ -43,6 +43,7 @@ For convenience, the package exports constants:
 
 ## 3. How data is stored and the eviction index
 
+- All plugin cache folders live under a **plugin root** **OPFS_PLUGIN_ROOT_DIR_NAME** (default **`.opfs-serve-range`**) in the OPFS root. Path: OPFS root → `.opfs-serve-range` → `folderName` (from options). This keeps plugin data separate from other apps’ folders; the leading dot marks it as a reserved folder that should not be modified manually.
 - One OPFS file per URL (the file name is a hash of the URL).
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. The index is also **rewritten** when a directory scan finds more evictable entries than the on-disk index contains (e.g. after reload when the index was empty but the cache has files). All index reads and writes are serialized with an in‑memory lock so updates are consistent.
@@ -107,7 +108,19 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 
 ---
 
-## 8. Edge cases
+## 8. Invalidation on file errors (three levels)
+
+Invalidation is handled at three levels:
+
+1. **File** — On error accessing a specific file (`getFileHandle(key)`, `getFile()`, or reading the footer), **per-key invalidation** runs: **invalidateCachesForFileKeyOnError** → **removeFromEvictionIndex** (metadata cache, range cache, eviction index for that key).
+2. **Folder** — If that throws (e.g. the cache folder was removed), **full folder invalidation** runs: **invalidateAllCachesForFolder(folderName)**.
+3. **Plugin root** — When opening a cache folder under the plugin root fails (`getOpfsDir` cannot get `folderName` under `.opfs-serve-range`), **invalidateAllCachesAndPluginRoot()** runs: the plugin root cache is cleared and caches for **all** registered folders are invalidated; then one retry is made to obtain the folder (creating the root if needed). This covers the case where the entire `.opfs-serve-range` directory was removed.
+
+This keeps in-memory caches from serving stale data after a file, folder, or the plugin root was removed outside the plugin.
+
+---
+
+## 9. Edge cases
 
 - **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
 - **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and adding to the skip list follows the rules above.
@@ -115,7 +128,7 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 
 ---
 
-## 9. In-memory caches
+## 10. In-memory caches
 
 The plugins use several in-memory caches to reduce I/O and repeated work. All are per service worker lifetime and are cleared or invalidated when the cache folder is cleared or when entries are evicted.
 
@@ -176,6 +189,7 @@ For convenience, the package exports constants:
 
 ## 3. How data is stored and the eviction index
 
+- All plugin cache folders live under a **plugin root** **OPFS_PLUGIN_ROOT_DIR_NAME** (default **`.opfs-serve-range`**) in the OPFS root. Path: OPFS root → `.opfs-serve-range` → `folderName` (from options). This keeps plugin data separate from other apps’ folders; the leading dot marks it as a reserved folder that should not be modified manually.
 - One OPFS file per URL (the file name is a hash of the URL).
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. The index is also **rewritten** when a directory scan finds more evictable entries than the on-disk index contains (e.g. after reload when the index was empty but the cache has files). All index reads and writes are serialized with an in‑memory lock so updates are consistent.
@@ -240,7 +254,19 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 
 ---
 
-## 8. Edge cases
+## 8. Invalidation on file errors (three levels)
+
+Invalidation is handled at three levels:
+
+1. **File** — On error accessing a specific file (`getFileHandle(key)`, `getFile()`, or reading the footer), **per-key invalidation** runs: **invalidateCachesForFileKeyOnError** → **removeFromEvictionIndex** (metadata cache, range cache, eviction index for that key).
+2. **Folder** — If that throws (e.g. the cache folder was removed), **full folder invalidation** runs: **invalidateAllCachesForFolder(folderName)**.
+3. **Plugin root** — When opening a cache folder under the plugin root fails (`getOpfsDir` cannot get `folderName` under `.opfs-serve-range`), **invalidateAllCachesAndPluginRoot()** runs: the plugin root cache is cleared and caches for **all** registered folders are invalidated; then one retry is made to obtain the folder (creating the root if needed). This covers the case where the entire `.opfs-serve-range` directory was removed.
+
+This keeps in-memory caches from serving stale data after a file, folder, or the plugin root was removed outside the plugin.
+
+---
+
+## 9. Edge cases
 
 - **Quota smaller than a single file** – writes will fail with QuotaExceeded; the partial file is removed, the URL may be added to the “do not cache” list, and clients receive a notification.
 - **Partial writes for streamed responses** – partial files are always removed; the decision about eviction and adding to the skip list follows the rules above.
@@ -248,7 +274,7 @@ On the client, you can subscribe to these events via **typed handlers** exposed 
 
 ---
 
-## 9. In-memory caches
+## 10. In-memory caches
 
 The plugins use several in-memory caches to reduce I/O and repeated work. All are per service worker lifetime and are cleared or invalidated when the cache folder is cleared or when entries are evicted.
 
@@ -309,6 +335,7 @@ For convenience, the package exports constants:
 
 ## 3. How data is stored and the eviction index
 
+- All plugin cache folders live under a **plugin root** **OPFS_PLUGIN_ROOT_DIR_NAME** (default **`.opfs-serve-range`**) in the OPFS root. Path: OPFS root → `.opfs-serve-range` → `folderName` (from options). This keeps plugin data separate from other apps’ folders; the leading dot marks it as a reserved folder that should not be modified manually.
 - One OPFS file per URL (the file name is a hash of the URL).
 - Each file ends with a footer containing metadata (JSON + 4‑byte length). Metadata includes **`lastAccessed`** (timestamp) and **`evictable`** (false = pinned; not evicted by LRU).
 - An **eviction index** file **`_eviction_index.json`** lives in the same cache directory. It holds only **evictable** entries: `{ key, size, lastAccessed }`. It is used for LRU: choosing which files to evict and in what order. If the index is missing or corrupted, it is **rebuilt** by scanning the directory and reading each file’s footer. The index is also **rewritten** when a directory scan finds more evictable entries than the on-disk index contains (e.g. after reload when the index was empty but the cache has files). All index reads and writes are serialized with an in‑memory lock so updates are consistent.

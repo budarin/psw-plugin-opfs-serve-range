@@ -16,6 +16,7 @@ import {
     getRangeCacheMaxSizeBytes,
     getRoot,
     invalidateAllCachesForFolder,
+    invalidateCachesForFileKeyOnError,
     isOpfsAvailable,
     normalizePatternList,
     registerFolderConfig,
@@ -272,14 +273,26 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 try {
                     fileHandle = await dir.getFileHandle(key);
                 } catch {
+                    await invalidateCachesForFileKeyOnError(dir, folderName, key);
                     addUrlServedFromNetwork(event.clientId, pathname);
                     if (enableLogging) {
                         logger.debug(`${OPFS_RANGE_LOG_SW}no file in OPFS for ${url}`);
                     }
                     return;
                 }
-                file = await fileHandle.getFile();
-                const { metadata, bodySize } = await readFooter(file);
+                let footer: Awaited<ReturnType<typeof readFooter>>;
+                try {
+                    file = await fileHandle.getFile();
+                    footer = await readFooter(file);
+                } catch {
+                    await invalidateCachesForFileKeyOnError(dir, folderName, key);
+                    addUrlServedFromNetwork(event.clientId, pathname);
+                    if (enableLogging) {
+                        logger.debug(`${OPFS_RANGE_LOG_SW}file read error for ${url}`);
+                    }
+                    return;
+                }
+                const { metadata, bodySize } = footer;
                 const size = metadata?.size ?? bodySize;
                 const meta: OpfsMetadataCacheEntry = {
                     fullSize: size,
@@ -456,9 +469,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
 
                 return response;
             } catch (err) {
-                if (err instanceof Error && err.name === 'NotFoundError') {
-                    invalidateAllCachesForFolder(folderName);
-                }
+                await invalidateCachesForFileKeyOnError(dir, folderName, key);
                 addUrlServedFromNetwork(event.clientId, pathname);
                 logger.error(`${OPFS_RANGE_LOG_SW}error for ${url}`, err);
                 return;

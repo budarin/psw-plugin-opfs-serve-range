@@ -25,9 +25,13 @@ export {
 export {
     emitDroppedPatternWarnings,
     getOpfsDir,
+    getPluginRoot,
     getRoot,
+    OPFS_PLUGIN_ROOT_DIR_NAME,
     clearOpfsCache,
     invalidateAllCachesForFolder,
+    invalidateAllCachesAndPluginRoot,
+    invalidateCachesForFileKeyOnError,
     isOpfsAvailable,
     normalizePatternList,
     registerFolderConfig,

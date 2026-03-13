@@ -13,6 +13,7 @@ import {
     getOpfsDir,
     getRoot,
     invalidateAllCachesForFolder,
+    invalidateCachesForFileKeyOnError,
     normalizePatternList,
     registerFolderConfig,
 } from './opfsUtil.js';
@@ -257,16 +258,19 @@ export function opfsRangeFromNetworkAndCache(
             // Запрос с Range: при enableLogging проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
             try {
                 if (enableLogging) {
+                    const key = await urlToOpfsKey(url);
+                    const root = await getRoot();
+                    let dir: FileSystemDirectoryHandle | undefined;
                     try {
-                        const key = await urlToOpfsKey(url);
-                        const root = await getRoot();
-                        const dir = await getOpfsDir(root, false, folderName);
+                        dir = await getOpfsDir(root, false, folderName);
                         await dir.getFileHandle(key);
                         logger.warn(
                             `${OPFS_RANGE_LOG_SW}file exists in OPFS for ${url} but request was not served from cache; fetching from network (possible: If-Range mismatch, invalid range, or opfsServeRange order)`
                         );
-                    } catch (err) {
-                        if (err instanceof Error && err.name === 'NotFoundError') {
+                    } catch {
+                        if (dir !== undefined) {
+                            await invalidateCachesForFileKeyOnError(dir, folderName, key);
+                        } else {
                             invalidateAllCachesForFolder(folderName);
                         }
                         // Файла нет в OPFS — нормально, идём в сеть.
