@@ -203,6 +203,7 @@ export function opfsCacheControl(): Plugin | undefined {
                 return;
             }
 
+            /** LIST: список строится из in-memory metadata cache; перед этим вызывается ensureCachesPopulated(dir), при первом запросе после старта SW выполняется скан каталога. */
             if (data.type === OPFS_REQUEST_LIST_CACHED_RESOURCES) {
                 try {
                     const root = await getRoot();
