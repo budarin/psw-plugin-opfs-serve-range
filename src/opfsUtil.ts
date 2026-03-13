@@ -274,8 +274,8 @@ function getGlobRegex(pattern: string): RegExp {
     return regex;
 }
 
-export function matchesGlob(url: UrlString, pattern: string): boolean {
-    const u = parseUrlSafe(url, 'https://example.com');
+export function matchesGlob(url: UrlString, pattern: string, base?: string): boolean {
+    const u = base ? parseUrlSafe(url, base) : parseUrlSafe(url);
     if (u === null) return false;
     return getGlobRegex(pattern).test(u.pathname);
 }
@@ -306,7 +306,7 @@ export function shouldProcessFile(
     }
     if (exclude?.length) {
         for (const pattern of exclude) {
-            if (matchesGlob(url, pattern)) {
+            if (matchesGlob(url, pattern, origin)) {
                 return false;
             }
         }
@@ -315,7 +315,7 @@ export function shouldProcessFile(
         return false;
     }
     for (const pattern of include) {
-        if (matchesGlob(url, pattern)) {
+        if (matchesGlob(url, pattern, origin)) {
             return true;
         }
     }

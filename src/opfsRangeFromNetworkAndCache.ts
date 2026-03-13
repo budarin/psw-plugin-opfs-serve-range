@@ -183,7 +183,6 @@ export function opfsRangeFromNetworkAndCache(
             event: FetchEvent,
             context: PluginContext
         ): Promise<Response | undefined> {
-            if (!context.logger) throw new Error('PluginContext must provide logger');
             const { logger } = context;
             const request = event.request;
             if (request.method !== 'GET') {

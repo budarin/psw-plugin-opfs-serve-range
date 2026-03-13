@@ -109,8 +109,8 @@ export { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 export type { OpfsServeRangeOptions, ServeOptionsFromFactory } from './opfsServeRange.js';
 export type { Pathname, UrlString, OpfsKey, FolderName } from './types.js';
 
-/** Общие опции для пары плагинов (serve + BF или serve + network+cache). */
-export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
+/** Базовые опции для фабрик пары плагинов (serve + BF или serve + network+cache). */
+export interface CreateOpfsServePluginsBaseOptions {
     folderName: FolderName;
     include: string[];
     exclude?: string[];
@@ -133,29 +133,13 @@ export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
     rangeCacheMaxEntries?: number;
 }
 
-/** Общие опции для пары плагинов (serve + network+cache). */
-export interface CreateOpfsServeAndNetworkCachePluginsOptions {
-    folderName: FolderName;
-    include: string[];
-    exclude?: string[];
-    /** Включить отладочное логирование (используется переданный logger). При true также включаются события кэша (logCacheEvents). */
-    debug?: boolean;
-    pinned?: string[];
-    /**
-     * Логгер для этапа инициализации фабрик (по умолчанию console).
-     */
-    logger?: Logger;
-    /**
-     * Логировать события кэша (заполнение, очистка, эвикция). Работает только при переданном logger.
-     */
-    logCacheEvents?: boolean;
-    /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
-    order?: number;
-    rangeResponseCacheControl?: string;
-    rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
-}
+/** Опции для пары плагинов serve + Background Fetch. */
+export interface CreateOpfsServeAndBackgroundFetchPluginsOptions
+    extends CreateOpfsServePluginsBaseOptions {}
+
+/** Опции для пары плагинов serve + network+cache. */
+export interface CreateOpfsServeAndNetworkCachePluginsOptions
+    extends CreateOpfsServePluginsBaseOptions {}
 
 function scheduleOpfsCacheWarmup(): void {
     queueMicrotask(() => {

@@ -385,10 +385,7 @@ export function filterAssetsForOpfs(
     include?: string[],
     exclude?: string[]
 ): Pathname[] {
-    const origin =
-        typeof location !== 'undefined'
-            ? location.origin
-            : 'https://example.com';
+    const origin = location.origin;
     return assets.filter((p) =>
         shouldProcessFile(new URL(p, origin).href, include, exclude)
     );
@@ -1114,10 +1111,7 @@ function runBackgroundFetch(
 export async function estimateAssetsSizeInBytes(
     assets: Pathname[]
 ): Promise<{ totalSize: number; sizes: Record<Pathname, number> }> {
-    const origin =
-        typeof location !== 'undefined'
-            ? location.origin
-            : 'https://example.com';
+    const origin = location.origin;
 
     const entries = await Promise.all(
         assets.map(async (asset): Promise<[Pathname, number]> => {

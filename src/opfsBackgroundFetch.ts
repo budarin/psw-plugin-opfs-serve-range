@@ -178,7 +178,6 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(idPrefixForFolder)) {
                 return;
             }
-            if (!context.logger) throw new Error('PluginContext must provide logger');
             const { logger } = context;
             const root = await getRoot();
             const dir = await getOpfsDir(root, true, folderName);
@@ -271,7 +270,6 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
                 return;
             }
-            if (!context.logger) throw new Error('PluginContext must provide logger');
             const { logger } = context;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
                 registrationId: event.registration.id,
@@ -290,7 +288,6 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
                 return;
             }
-            if (!context.logger) throw new Error('PluginContext must provide logger');
             const { logger } = context;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_ABORTED, {
                 registrationId: event.registration.id,
@@ -308,7 +305,6 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchclick(event, context: PluginContext): Promise<void> {
-            if (!context.logger) throw new Error('PluginContext must provide logger');
             const { logger } = context;
             if (debug) {
                 logger.debug(
