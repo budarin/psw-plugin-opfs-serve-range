@@ -428,7 +428,7 @@ useDownloadAssetsToOpfs(): {
 
 ### Low-level API (without startDownloadAssetsToOpfs or the hook)
 
-If you are not using startDownloadAssetsToOpfs or the hook and want to wire the flow yourself, you need two things. First, the functions to start a download and check for support: **startBackgroundFetch** and **isBackgroundFetchSupported** from the pluggable-serviceworker package (client submodule `client/background-fetch`). Second, subscribe to the service worker messages for completion, failure, abort, and per-file write; the subscription functions (**onOPFSBackgroundFetchCompleted**, **onOPFSBackgroundFetchFailed**, **onOPFSBackgroundFetchAborted**, **onOPFSBackgroundFetchFileWritten**) are exported from this package. The download id must be formed using **getOpfsBackgroundFetchId(assets)**. That id is what the service worker plugin uses to associate the download with the set of resources.
+If you are not using startDownloadAssetsToOpfs or the hook and want to wire the flow yourself, you need two things. First, the functions to start a download and check for support: **startBackgroundFetch** and **isBackgroundFetchSupported** from the pluggable-serviceworker package (client submodule `client/background-fetch`). Second, subscribe to the service worker messages for completion, failure, abort, and per-file write; the subscription functions (**onOPFSBackgroundFetchCompleted**, **onOPFSBackgroundFetchFailed**, **onOPFSBackgroundFetchAborted**, **onOPFSBackgroundFetchFileWritten**) are exported from this package. The download id must be formed using **getOpfsBackgroundFetchId(assets, folderName)**. That id is unique per folder, so the same asset set in different caches does not collide. The service worker plugin uses the id prefix per folder to handle only its own completions.
 
 ### Subscriptions to service worker messages
 
@@ -474,7 +474,7 @@ Which fields appear in `event.data` depends on the message type (see list above 
 
 ### Cache utilities
 
-These functions are called from the page. **folderName** must match the name used when registering the plugins. To clear a cache, call **clearOpfsCache(folderName)** (from the service worker or from the page, passing the same folder name).
+These functions are called from the page and send requests to the service worker (plugin **opfsCacheControl**). The SW performs the operation in OPFS and invalidates its in-memory caches. Request timeout is 2 s. **folderName** must match a folder registered in the SW. If the folder is not registered, the SW responds with an error: **listOpfsCachedResources** and **hasInOpfsCache** then return `[]` and `false`; **deleteFromOpfsCache** and **clearOpfsCache** reject the promise with `opfs: folder not registered`. When using **createOpfsServeAndBackgroundFetchPlugins** or **createOpfsServeAndNetworkCachePlugins**, **opfsCacheControl** is included, so list/has/delete/clear work out of the box. To clear a cache from the page, call **clearOpfsCache(folderName)** (same signature as on the SW; the client sends a CLEAR request).
 
 **listOpfsCachedResources(folderName)**
 
@@ -566,7 +566,7 @@ function VideoPlayer() {
 
 ## OPFS storage format
 
-For custom plugins or direct file access. File key: `hex(SHA-256(URL))` (64 chars). One file per URL: resource body, then footer (JSON metadata + 4-byte length). Metadata fields in JSON: `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. All plugins in this package use the same format and shared **urlToOpfsKey**.
+For custom plugins or direct file access. All cache folders live under the plugin root **OPFS_PLUGIN_ROOT_DIR_NAME** (default **`.opfs-serve-range`**) in the OPFS root: OPFS root → `.opfs-serve-range` → folderName. This keeps plugin data separate from other apps’ folders. File key: `hex(SHA-256(URL))` (64 chars). One file per URL: resource body, then footer (JSON metadata + 4-byte length). Metadata fields in JSON: `url`, `size`, `type`, `etag`, `lastModified`, `lastAccessed`, `evictable`. All plugins in this package use the same format and shared **urlToOpfsKey**.
 
 **Important:** When serving a file in full (200 without Range), return only the body, not the footer: compute `bodySize` from the footer and use `file.slice(0, bodySize)`. The opfsServeRange plugin only serves body ranges (206); the footer is never exposed.
 

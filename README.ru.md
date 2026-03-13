@@ -424,7 +424,7 @@ useDownloadAssetsToOpfs(): {
 
 ### Низкоуровневый API (без startDownloadAssetsToOpfs и хука)
 
-Если вы не используете startDownloadAssetsToOpfs или хук и собираете сценарий вручную, понадобятся две вещи. Во-первых, функции запуска загрузки и проверки поддержки: **startBackgroundFetch** и **isBackgroundFetchSupported** из пакета pluggable-serviceworker (клиентский подмодуль `client/background-fetch`). Во-вторых, подписка на сообщения от сервис-воркера — об успешном завершении загрузки, об ошибке, об отмене и о записи каждого файла в OPFS; соответствующие функции подписки (**onOPFSBackgroundFetchCompleted**, **onOPFSBackgroundFetchFailed**, **onOPFSBackgroundFetchAborted**, **onOPFSBackgroundFetchFileWritten**) экспортируются из этого пакета. Идентификатор загрузки обязан быть сформирован при помощи **getOpfsBackgroundFetchId(assets)**. Такой id нужен плагину в сервис-воркере, чтобы корректно связывать загрузку с набором ресурсов.
+Если вы не используете startDownloadAssetsToOpfs или хук и собираете сценарий вручную, понадобятся две вещи. Во-первых, функции запуска загрузки и проверки поддержки: **startBackgroundFetch** и **isBackgroundFetchSupported** из пакета pluggable-serviceworker (клиентский подмодуль `client/background-fetch`). Во-вторых, подписка на сообщения от сервис-воркера — об успешном завершении загрузки, об ошибке, об отмене и о записи каждого файла в OPFS; соответствующие функции подписки (**onOPFSBackgroundFetchCompleted**, **onOPFSBackgroundFetchFailed**, **onOPFSBackgroundFetchAborted**, **onOPFSBackgroundFetchFileWritten**) экспортируются из этого пакета. Идентификатор загрузки обязан быть сформирован при помощи **getOpfsBackgroundFetchId(assets, folderName)**. Id уникален для папки, поэтому один и тот же набор ресурсов в разных кешах не даёт коллизий; плагин в SW обрабатывает только события своей папки.
 
 ### Подписки на сообщения от сервис-воркера
 
@@ -470,7 +470,7 @@ interface OpfsMessagePayload {
 
 ### Утилиты кэша
 
-Эти функции вызываются на странице (в клиентском коде). **folderName** должен совпадать с именем папки при регистрации плагинов. Очистить кеш: **clearOpfsCache(folderName)** (из сервис-воркера или со страницы).
+Эти функции вызываются на странице и отправляют запросы в сервис-воркер (плагин **opfsCacheControl**). SW выполняет операцию в OPFS и инвалидирует свои in-memory кэши. Таймаут запроса 2 с. **folderName** должен совпадать с папкой, зарегистрированной в SW. Если папка не зарегистрирована, SW отвечает ошибкой: **listOpfsCachedResources** и **hasInOpfsCache** в этом случае возвращают `[]` и `false` соответственно; **deleteFromOpfsCache** и **clearOpfsCache** отклоняют промис с сообщением `opfs: folder not registered`. При использовании **createOpfsServeAndBackgroundFetchPlugins** или **createOpfsServeAndNetworkCachePlugins** плагин **opfsCacheControl** уже входит в набор — list/has/delete/clear работают «из коробки». Очистить кеш со страницы: **clearOpfsCache(folderName)** (клиент шлёт запрос CLEAR).
 
 **listOpfsCachedResources(folderName)**
 
@@ -562,7 +562,7 @@ function VideoPlayer() {
 
 ## Формат хранения в OPFS
 
-Раздел для тех, кто пишет свой плагин или читает файлы из OPFS напрямую. Имя файла в OPFS — 64 символа (hex от SHA-256 от URL). В файле сначала идёт тело ресурса, в конце — футер: метаданные в JSON и 4 байта длины. В метаданных хранятся url, size, type, etag, lastModified, lastAccessed, evictable. Все плагины пакета используют этот формат и общую функцию urlToOpfsKey.
+Раздел для тех, кто пишет свой плагин или читает файлы из OPFS напрямую. Все папки кеша лежат в корневой папке плагина **OPFS_PLUGIN_ROOT_DIR_NAME** (по умолчанию **`.opfs-serve-range`**) в корне OPFS: корень OPFS → `.opfs-serve-range` → folderName. Имя файла в OPFS — 64 символа (hex от SHA-256 от URL). В файле сначала идёт тело ресурса, в конце — футер: метаданные в JSON и 4 байта длины. В метаданных хранятся url, size, type, etag, lastModified, lastAccessed, evictable. Все плагины пакета используют этот формат и общую функцию urlToOpfsKey.
 
 Если отдаёте файл целиком (ответ 200 без Range), отдавайте только тело, без футера: по футеру вычислите размер тела и отдайте file.slice(0, bodySize). Плагин opfsServeRange отдаёт только диапазоны тела (ответ 206), футер в ответ не входит.
 
