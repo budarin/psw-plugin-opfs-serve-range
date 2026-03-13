@@ -264,7 +264,7 @@ export function opfsBackgroundFetch(
                 } catch (err) {
                     failedOrSkippedPathnames.push(pathname);
                     logger.error(
-                        `${OPFS_RANGE_LOG_SW}write failed ${record.request.url}`,
+                        `write failed ${record.request.url}`,
                         err
                     );
                 }
@@ -287,7 +287,7 @@ export function opfsBackgroundFetch(
                 registrationId: event.registration.id,
             });
             logger.warn(
-                `${OPFS_RANGE_LOG_SW}background fetch failed, id=${event.registration.id}`
+                `background fetch failed, id=${event.registration.id}`
             );
             if (typeof event.updateUI === 'function' && titleFetchFailed !== '') {
                 await event.updateUI({
@@ -333,7 +333,7 @@ export function opfsBackgroundFetch(
                 await self.clients.openWindow('/');
             } catch (err) {
                 logger.error(
-                    `${OPFS_RANGE_LOG_SW}failed to open window on backgroundfetchclick`,
+                    `failed to open window on backgroundfetchclick`,
                     err
                 );
             }

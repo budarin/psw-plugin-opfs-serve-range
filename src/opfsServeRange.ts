@@ -257,7 +257,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             try {
                 key = await urlToOpfsKey(url);
             } catch (err) {
-                logger.error(`${OPFS_RANGE_LOG_SW}hash failed for ${url}`, err);
+                logger.error(`hash failed for ${url}`, err);
                 return;
             }
 
@@ -468,7 +468,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             } catch (err) {
                 await invalidateCachesForFileKeyOnError(dir, folderName, key);
                 addUrlServedFromNetwork(event.clientId, pathname);
-                logger.error(`${OPFS_RANGE_LOG_SW}error for ${url}`, err);
+                logger.error(`error for ${url}`, err);
                 return;
             }
         },

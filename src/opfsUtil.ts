@@ -11,7 +11,6 @@ import {
 } from './opfsEvictionIndex.js';
 import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
-import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
 import { logCacheEvent } from './opfsCacheEventLog.js';
 
 const DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -140,10 +139,10 @@ export function emitDroppedPatternWarnings(
     logger: Logger
 ): void {
     for (const s of dropped.crossOrigin) {
-        logger.warn(`${OPFS_RANGE_LOG_SW}dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
+        logger.warn(`dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
     }
     for (const s of dropped.invalid) {
-        logger.warn(`${OPFS_RANGE_LOG_SW}dropped invalid URL in include/exclude/pinned: ${s}`);
+        logger.warn(`dropped invalid URL in include/exclude/pinned: ${s}`);
     }
     dropped.crossOrigin.length = 0;
     dropped.invalid.length = 0;

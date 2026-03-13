@@ -291,7 +291,7 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
     } catch (err) {
         if (debug) {
             logger.warn(
-                `${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: load failed`,
+                `reconnectPlayer: load failed`,
                 err
             );
         }
