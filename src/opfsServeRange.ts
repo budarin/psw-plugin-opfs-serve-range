@@ -264,10 +264,8 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             let dir: FileSystemDirectoryHandle;
             try {
                 dir = await getFlatStoreDir();
-            } catch (err) {
-                if (err instanceof Error && err.name === 'NotFoundError') {
-                    invalidateAllCachesAndPluginRoot();
-                }
+            } catch {
+                invalidateAllCachesAndPluginRoot();
                 addUrlServedFromNetwork(event.clientId, pathname);
                 if (debug) {
                     logger.debug(
