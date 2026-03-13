@@ -91,7 +91,7 @@ initServiceWorker(
         createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
-            enableLogging: true,
+            debug: true,
         }),
         createOpfsServeAndBackgroundFetchPlugins({
             folderName: 'audio-cache',
@@ -169,7 +169,7 @@ createOpfsServeAndBackgroundFetchPlugins(options: {
   order?: number;            // по умолчанию 0
   include: string[];
   exclude?: string[];
-  enableLogging?: boolean;   // по умолчанию false
+  debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
@@ -185,7 +185,7 @@ createOpfsServeAndNetworkCachePlugins(options: {
   order?: number;            // по умолчанию 0
   include: string[];
   exclude?: string[];
-  enableLogging?: boolean;   // по умолчанию false
+  debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
@@ -240,7 +240,7 @@ opfsServeRange(options: {
   order?: number;            // по умолчанию 0
   include: string[];
   exclude?: string[];
-  enableLogging?: boolean;   // по умолчанию false
+  debug?: boolean;   // по умолчанию false
   logger?: Logger;
   rangeResponseCacheControl?: string;
   rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
@@ -257,7 +257,7 @@ opfsRangeFromNetworkAndCache(options: {
   order?: number;            // по умолчанию 0
   include: string[];
   exclude?: string[];
-  enableLogging?: boolean;   // по умолчанию false
+  debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
 }): Plugin | undefined
@@ -271,7 +271,7 @@ opfsBackgroundFetch(options: {
   order?: number;            // по умолчанию 0
   include: string[];
   exclude?: string[];
-  enableLogging?: boolean;   // по умолчанию false
+  debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
 }): Plugin | undefined

@@ -66,6 +66,7 @@ async function populateCacheUnlocked(dir: FileSystemDirectoryHandle): Promise<vo
         return;
     }
     globalEvictionCache.clear();
+    getMetadataCache()?.invalidateAll();
     const metaCache = getMetadataCache();
     for await (const [fileKey, handle] of dir.entries()) {
         if (handle.kind !== 'file') continue;

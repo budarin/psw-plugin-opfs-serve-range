@@ -714,7 +714,7 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
 
     const asset = payload.asset;
     if (!asset) {
-        if (debug) logger.debug?.(`${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: no asset in payload`);
+        if (debug) logger.debug(`${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: no asset in payload`);
         return;
     }
 
@@ -724,7 +724,7 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
     const current = element.currentSrc || element.src;
     if (!current || current !== assetUrl) {
         if (debug) {
-            logger.debug?.(
+            logger.debug(
                 `${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: skip (asset URL !== current src), asset=${assetUrl}, current=${current}`
             );
         }
@@ -734,7 +734,7 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
     const inCache = await hasInOpfsCache(assetUrl, folderName);
     if (!inCache) {
         if (debug) {
-            logger.debug?.(
+            logger.debug(
                 `${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: skip (not in OPFS), url=${assetUrl}`
             );
         }
@@ -742,13 +742,13 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
     }
 
     if (debug) {
-        logger.debug?.(`${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: reconnecting to ${assetUrl}`);
+        logger.debug(`${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: reconnecting to ${assetUrl}`);
     }
     try {
         await reconnectMediaElementToCurrentSrcFromOpfs(element);
     } catch (err) {
         if (debug) {
-            logger.warn?.(
+            logger.warn(
                 `${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: load failed`,
                 err
             );
@@ -810,6 +810,8 @@ export interface StartDownloadAssetsToOpfsOptions {
     onFileWritten?: (loadedAssets: Pathname[], totalCount: number) => void;
     /** AbortSignal для отмены. При abort отписки снимаются, промис отклоняется с reason: 'abort'. */
     signal?: AbortSignal;
+    /** Логгер для ошибок/диагностики (по умолчанию console). */
+    logger?: Logger;
 }
 
 /**
@@ -829,6 +831,7 @@ export async function startDownloadAssetsToOpfs(
         onProgress,
         onFileWritten,
         signal,
+        logger = console,
     } = options;
     const filteredOut: string[] = [];
 
@@ -840,7 +843,7 @@ export async function startDownloadAssetsToOpfs(
         );
         (err as Error & { code: string }).code =
             OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE;
-        console.error(err.message);
+        logger.error(err.message);
         throw err;
     }
     if (!registeredFolders.includes(folderName)) {
@@ -849,7 +852,7 @@ export async function startDownloadAssetsToOpfs(
         );
         (err_1 as Error & { code: string }).code =
             OPFS_ERROR_FOLDER_NOT_REGISTERED;
-        console.error(err_1.message);
+        logger.error(err_1.message);
         throw err_1;
     }
     const assetsToUse = filterAssetsForOpfs(
@@ -972,10 +975,10 @@ function runBackgroundFetch(
         signal,
     } = options;
     const attachOnly = runOptions?.attachOnly === true;
-    const origin =
-        typeof location !== 'undefined'
-            ? location.origin
-            : 'https://example.com';
+    if (typeof location === 'undefined' || !location.origin) {
+        throw new Error('OPFS: location.origin is not available');
+    }
+    const origin = location.origin;
     const urls = assetsToUse.map((p) => new URL(p, origin).href);
 
     return new Promise((resolve, reject) => {

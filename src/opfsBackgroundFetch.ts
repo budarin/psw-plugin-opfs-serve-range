@@ -111,9 +111,9 @@ export interface OpfsBackgroundFetchOptions {
      */
     exclude?: string[];
     /**
-     * Включить логирование (fail/abort/click и отладочные сообщения success).
+     * Включить отладочное логирование (fail/abort/click и отладочные сообщения success). Используется переданный logger.
      */
-    enableLogging?: boolean;
+    debug?: boolean;
     /**
      * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude/pinned).
      * По умолчанию используется console.
@@ -128,7 +128,7 @@ export interface OpfsBackgroundFetchOptions {
 /**
  * Плагин: обрабатывает все события Background Fetch в рамках одного процесса (загрузка в range cache).
  * - backgroundfetchsuccess: по каждому запросу, проходящему include/exclude, пишет ответ в OPFS.
- * - backgroundfetchfail / backgroundfetchabort / backgroundfetchclick: при enableLogging логирует.
+ * - backgroundfetchfail / backgroundfetchabort / backgroundfetchclick: при debug логирует.
  * Требуется Content-Length в ответе для записи. Без include/exclude в success пишет все ответы.
  */
 export function opfsBackgroundFetch(
@@ -138,7 +138,7 @@ export function opfsBackgroundFetch(
         return undefined;
     }
     const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
-    const { folderName, order = 0, include, exclude, enableLogging = false, pinned, logger = console } = options;
+    const { folderName, order = 0, include, exclude, debug = false, pinned, logger = console } = options;
     if (include == null || !Array.isArray(include) || include.length === 0) {
         throw new Error('opfs: include is required and must be a non-empty array');
     }
@@ -178,7 +178,8 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(idPrefixForFolder)) {
                 return;
             }
-            const logger = context.logger ?? console;
+            if (!context.logger) throw new Error('PluginContext must provide logger');
+            const { logger } = context;
             const root = await getRoot();
             const dir = await getOpfsDir(root, true, folderName);
             const records = await event.registration.matchAll();
@@ -199,7 +200,7 @@ export function opfsBackgroundFetch(
                 const pathname = toPathname(record);
                 if (!shouldProcessFile(url, normalizedInclude, normalizedExclude)) {
                     failedOrSkippedPathnames.push(pathname);
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}skip ${url} (filtered by include/exclude)`
                         );
@@ -209,7 +210,7 @@ export function opfsBackgroundFetch(
                 if (isInSkipList(url)) {
                     failedOrSkippedPathnames.push(pathname);
                     notifyClients(OPFS_MSG_SKIP_QUOTA_EXCEEDED, { url });
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}skip ${url} (in skip list, quota exceeded)`
                         );
@@ -219,7 +220,7 @@ export function opfsBackgroundFetch(
                 const response = await record.responseReady;
                 if (!response.ok || !response.body) {
                     failedOrSkippedPathnames.push(pathname);
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}skip ${url} (not ok or no body)`
                         );
@@ -244,7 +245,7 @@ export function opfsBackgroundFetch(
                         loadedAssets: [...writtenPathnames],
                         totalCount,
                     });
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}cached ${url} -> ${key} (${metadata.size} bytes)`
                         );
@@ -270,7 +271,8 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
                 return;
             }
-            const logger = context.logger!;
+            if (!context.logger) throw new Error('PluginContext must provide logger');
+            const { logger } = context;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_FAILED, {
                 registrationId: event.registration.id,
             });
@@ -288,11 +290,12 @@ export function opfsBackgroundFetch(
             if (!event.registration.id.startsWith(getOpfsBackgroundFetchIdPrefixForFolder(folderName))) {
                 return;
             }
-            const logger = context.logger!;
+            if (!context.logger) throw new Error('PluginContext must provide logger');
+            const { logger } = context;
             notifyClients(OPFS_MSG_BACKGROUND_FETCH_ABORTED, {
                 registrationId: event.registration.id,
             });
-            if (enableLogging) {
+            if (debug) {
                 logger.debug(
                     `${OPFS_RANGE_LOG_SW}background fetch aborted, id=${event.registration.id}`
                 );
@@ -305,8 +308,9 @@ export function opfsBackgroundFetch(
         },
 
         async backgroundfetchclick(event, context: PluginContext): Promise<void> {
-            const logger = context.logger!;
-            if (enableLogging) {
+            if (!context.logger) throw new Error('PluginContext must provide logger');
+            const { logger } = context;
+            if (debug) {
                 logger.debug(
                     `${OPFS_RANGE_LOG_SW}user clicked download UI, id=${event.registration.id}`
                 );

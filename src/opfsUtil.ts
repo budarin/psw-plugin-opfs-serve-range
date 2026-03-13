@@ -2,6 +2,7 @@
  * Общие утилиты: glob, папка плагина в OPFS, очистка, реестр папок по плагинам.
  */
 
+import type { Logger } from '@budarin/pluggable-serviceworker';
 import type { FolderName, OpfsKey, UrlString } from './types.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
 import {
@@ -34,6 +35,7 @@ export function setGlobalMaxCacheFraction(fraction: number): void {
 export function resetFolderRegistryForTests(): void {
     folderRegistry.clear();
     globalMaxCacheFraction = 0.5;
+    cachedRootPromise = null;
     cachedPluginRootPromise = null;
 }
 
@@ -135,13 +137,13 @@ export function normalizePatternList(
 /** Выводит предупреждения по отброшенным паттернам через logger контракта плагина. Очищает dropped после вывода. */
 export function emitDroppedPatternWarnings(
     dropped: NormalizePatternListDropped,
-    logger: { warn?: (message: string) => void }
+    logger: Logger
 ): void {
     for (const s of dropped.crossOrigin) {
-        logger.warn?.(`${OPFS_RANGE_LOG_SW}dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
+        logger.warn(`${OPFS_RANGE_LOG_SW}dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
     }
     for (const s of dropped.invalid) {
-        logger.warn?.(`${OPFS_RANGE_LOG_SW}dropped invalid URL in include/exclude/pinned: ${s}`);
+        logger.warn(`${OPFS_RANGE_LOG_SW}dropped invalid URL in include/exclude/pinned: ${s}`);
     }
     dropped.crossOrigin.length = 0;
     dropped.invalid.length = 0;
@@ -191,7 +193,11 @@ let cachedPluginRootPromise: Promise<FileSystemDirectoryHandle> | null = null;
  */
 export function getRoot(): Promise<FileSystemDirectoryHandle> {
     if (cachedRootPromise === null) {
-        cachedRootPromise = navigator.storage.getDirectory();
+        const p = navigator.storage.getDirectory();
+        p.catch(() => {
+            cachedRootPromise = null;
+        });
+        cachedRootPromise = p;
     }
     return cachedRootPromise;
 }
@@ -203,9 +209,13 @@ export function getRoot(): Promise<FileSystemDirectoryHandle> {
 export async function getPluginRoot(): Promise<FileSystemDirectoryHandle> {
     if (cachedPluginRootPromise === null) {
         const root = await getRoot();
-        cachedPluginRootPromise = root.getDirectoryHandle(OPFS_PLUGIN_ROOT_DIR_NAME, {
+        const p = root.getDirectoryHandle(OPFS_PLUGIN_ROOT_DIR_NAME, {
             create: true,
         });
+        p.catch(() => {
+            cachedPluginRootPromise = null;
+        });
+        cachedPluginRootPromise = p;
     }
     return cachedPluginRootPromise;
 }
@@ -317,6 +327,7 @@ export function shouldProcessFile(
  * Вызывать при ошибке доступа к папке под плагин-корнем (уровень «корневая папка»).
  */
 export function invalidateAllCachesAndPluginRoot(): void {
+    cachedRootPromise = null;
     cachedPluginRootPromise = null;
     for (const fn of getRegisteredFolderNames()) {
         invalidateAllCachesForFolder(fn);

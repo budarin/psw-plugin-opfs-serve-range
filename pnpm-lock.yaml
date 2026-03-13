@@ -13,8 +13,8 @@ importers:
         version: 1.0.22
     devDependencies:
       '@budarin/pluggable-serviceworker':
-        specifier: ^1.17.5
-        version: 1.17.5
+        specifier: ^1.17.6
+        version: 1.17.6
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
@@ -39,8 +39,8 @@ packages:
   '@budarin/http-constants@1.0.22':
     resolution: {integrity: sha512-XZu3JmErHaTTwDPnsGikjwzZ/NHS3DWQNcxmRemhY1jJTr9Va5Arnk4mbE6lVAg1bir1AYyO1zygzQTjiSEtZw==}
 
-  '@budarin/pluggable-serviceworker@1.17.5':
-    resolution: {integrity: sha512-dO6QNV0limEhVXc0Pprbtu+BXMI/LSGk/UiKmOfJIH/YoSlwqlvFHr7vYeEpyCWMFlm7/kqlccgdyVGT0cI16g==}
+  '@budarin/pluggable-serviceworker@1.17.6':
+    resolution: {integrity: sha512-u5Pq2+vZnXdGmhP5D1KmFnwzsbwFxdd/4ayw1XTjbri3sUbiGCLIgyzJTc2hblpu2B1/VXYfAdHgbqZKTj4vEQ==}
 
   '@esbuild/aix-ppc64@0.27.4':
     resolution: {integrity: sha512-cQPwL2mp2nSmHHJlCyoXgHGhbEPMrEEU5xhkcy3Hs/O7nGZqEpZ2sUtLaL9MORLtDfRvVl2/3PAuEkYZH0Ty8Q==}
@@ -570,7 +570,7 @@ snapshots:
 
   '@budarin/http-constants@1.0.22': {}
 
-  '@budarin/pluggable-serviceworker@1.17.5':
+  '@budarin/pluggable-serviceworker@1.17.6':
     dependencies:
       '@budarin/http-constants': 1.0.22
 

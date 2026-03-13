@@ -14,7 +14,7 @@ import {
     getFlatStoreDir,
     getRangeCacheMaxEntries,
     getRangeCacheMaxSizeBytes,
-    invalidateAllCachesForFolder,
+    invalidateAllCachesAndPluginRoot,
     invalidateCachesForFileKeyOnError,
     isOpfsAvailable,
     normalizePatternList,
@@ -53,9 +53,9 @@ export interface OpfsServeRangeOptions {
      */
     order?: number;
     /**
-     * Включить логирование (по умолчанию false).
+     * Включить отладочное логирование (по умолчанию false).
      */
-    enableLogging?: boolean;
+    debug?: boolean;
     /**
      * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude).
      * По умолчанию используется console.
@@ -93,7 +93,7 @@ export interface ServeOptionsFromFactory {
     folderName: FolderName;
     include: string[];
     exclude?: string[];
-    enableLogging?: boolean;
+    debug?: boolean;
     logger?: Logger;
     order?: number;
     rangeResponseCacheControl?: string;
@@ -165,7 +165,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
     const {
         folderName,
         order = -15,
-        enableLogging = false,
+        debug = false,
         include,
         exclude,
         logger = console,
@@ -228,7 +228,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             event: FetchEvent,
             context: PluginContext
         ): Promise<Response | undefined> {
-            const logger = context.logger ?? console;
+            const { logger } = context;
             const request = event.request;
             const rangeHeader = request.headers.get(HEADER_RANGE);
 
@@ -239,7 +239,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 return;
             }
             if (!shouldProcessFile(request.url, normalizedInclude, normalizedExclude)) {
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}skip ${request.url} (filtered by include/exclude)`
                     );
@@ -266,10 +266,10 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 dir = await getFlatStoreDir();
             } catch (err) {
                 if (err instanceof Error && err.name === 'NotFoundError') {
-                    invalidateAllCachesForFolder(folderName);
+                    invalidateAllCachesAndPluginRoot();
                 }
                 addUrlServedFromNetwork(event.clientId, pathname);
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}no plugin dir in OPFS for ${url}`
                     );
@@ -292,7 +292,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 } catch {
                     await invalidateCachesForFileKeyOnError(dir, folderName, key);
                     addUrlServedFromNetwork(event.clientId, pathname);
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(`${OPFS_RANGE_LOG_SW}no file in OPFS for ${url}`);
                     }
                     return;
@@ -304,7 +304,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 } catch {
                     await invalidateCachesForFileKeyOnError(dir, folderName, key);
                     addUrlServedFromNetwork(event.clientId, pathname);
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(`${OPFS_RANGE_LOG_SW}file read error for ${url}`);
                     }
                     return;
@@ -312,7 +312,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 const { metadata, bodySize } = footer;
                 if (metadata?.folderName !== folderName) {
                     addUrlServedFromNetwork(event.clientId, pathname);
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}file in OPFS but folderName mismatch for ${url}`
                         );
@@ -340,7 +340,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             const meta = cachedMeta;
             if (meta.folderName !== folderName) {
                 addUrlServedFromNetwork(event.clientId, pathname);
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}cached file folderName mismatch for ${url}`
                     );
@@ -351,7 +351,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             const type = meta.type;
 
             if (isUrlServedFromNetworkForClient(event.clientId, pathname)) {
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}${pathname} already served from network for this client, passthrough (Chromium bug workaround)`
                     );
@@ -370,7 +370,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 })
             ) {
                 addUrlServedFromNetwork(event.clientId, pathname);
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}If-Range mismatch for ${url}, passing through`
                     );
@@ -397,7 +397,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                                 key,
                                 event
                             );
-                            if (enableLogging) {
+                            if (debug) {
                                 logger.debug(
                                     `${OPFS_RANGE_LOG_SW}206 from rangeCache for ${url} bytes ${range.start}-${range.end}`
                                 );
@@ -423,7 +423,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                         key,
                         event
                     );
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end} (cached)`
                         );
@@ -460,7 +460,7 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     );
                 }
 
-                if (enableLogging) {
+                if (debug) {
                     logger.debug(
                         `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end}`
                     );
@@ -490,7 +490,7 @@ export function buildServeOptions(
         include: options.include,
         order,
         ...(options.exclude !== undefined && { exclude: options.exclude }),
-        ...(options.enableLogging !== undefined && { enableLogging: options.enableLogging }),
+        ...(options.debug !== undefined && { debug: options.debug }),
         ...(options.logger !== undefined && { logger: options.logger }),
         ...(options.rangeResponseCacheControl !== undefined && {
             rangeResponseCacheControl: options.rangeResponseCacheControl,

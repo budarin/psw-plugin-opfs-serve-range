@@ -25,7 +25,10 @@ import {
     registerFileInCache,
     removeFromEvictionIndex,
 } from './opfsEvictionIndex.js';
-import { getRegisteredFolderNames, invalidateAllCachesForFolder } from './opfsUtil.js';
+import {
+    getRegisteredFolderNames,
+    invalidateAllCachesAndPluginRoot,
+} from './opfsUtil.js';
 import {
     OPFS_MSG_WRITE_SKIPPED_SIZE,
     OPFS_MSG_QUOTA_EXCEEDED,
@@ -137,7 +140,7 @@ export async function writeToOpfs(
         }
     } catch (err) {
         if (err instanceof Error && err.name === 'NotFoundError') {
-            invalidateAllCachesForFolder(folderName);
+            invalidateAllCachesAndPluginRoot();
         }
         const isQuotaExceeded =
             err instanceof Error &&

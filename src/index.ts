@@ -114,14 +114,15 @@ export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
     folderName: FolderName;
     include: string[];
     exclude?: string[];
-    enableLogging?: boolean;
+    /** Включить отладочное логирование (используется переданный logger). При true также включаются события кэша (logCacheEvents). */
+    debug?: boolean;
     pinned?: string[];
     /**
      * Логгер для этапа инициализации фабрик (по умолчанию console).
      */
     logger?: Logger;
     /**
-     * Логировать события кэша (заполнение, очистка, эвикция). Работает только при переданном logger.
+     * Логировать события кэша (заполнение, очистка, эвикция). По умолчанию при debug: true. Работает только при переданном logger.
      */
     logCacheEvents?: boolean;
     /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
@@ -137,7 +138,8 @@ export interface CreateOpfsServeAndNetworkCachePluginsOptions {
     folderName: FolderName;
     include: string[];
     exclude?: string[];
-    enableLogging?: boolean;
+    /** Включить отладочное логирование (используется переданный logger). При true также включаются события кэша (logCacheEvents). */
+    debug?: boolean;
     pinned?: string[];
     /**
      * Логгер для этапа инициализации фабрик (по умолчанию console).
@@ -170,18 +172,19 @@ function scheduleOpfsCacheWarmup(): void {
 export function createOpfsServeAndBackgroundFetchPlugins(
     options: CreateOpfsServeAndBackgroundFetchPluginsOptions
 ): Plugin[] {
+    const logger = options.logger ?? console;
     setCacheEventLogging(
-        options.logCacheEvents === true && options.logger != null,
-        options.logger
+        options.debug === true || options.logCacheEvents === true,
+        logger
     );
     scheduleOpfsCacheWarmup();
-    const { folderName, include, exclude, enableLogging, pinned, logger, order = 0 } =
+    const { folderName, include, exclude, debug, pinned, order = 0 } =
         options;
-    const serve = opfsServeRange(buildServeOptions(options, order));
+    const serve = opfsServeRange(buildServeOptions({ ...options, logger }, order));
     const filterPlugin = opfsBackgroundFetchFilter({
         include,
         ...(exclude !== undefined && { exclude }),
-        ...(logger !== undefined && { logger }),
+        logger,
     });
     const registeredFoldersPlugin = opfsRegisteredFolders();
     const bf = opfsBackgroundFetch({
@@ -189,9 +192,9 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         include,
         order: order + 1,
         ...(exclude !== undefined && { exclude }),
-        ...(enableLogging !== undefined && { enableLogging }),
+        ...(debug !== undefined && { debug }),
         ...(pinned !== undefined && { pinned }),
-        ...(logger !== undefined && { logger }),
+        logger,
     });
     const cacheControl = opfsCacheControl();
     return [serve, filterPlugin, registeredFoldersPlugin, cacheControl, bf].filter((p): p is Plugin => p !== undefined);
@@ -203,22 +206,23 @@ export function createOpfsServeAndBackgroundFetchPlugins(
 export function createOpfsServeAndNetworkCachePlugins(
     options: CreateOpfsServeAndNetworkCachePluginsOptions
 ): Plugin[] {
+    const logger = options.logger ?? console;
     setCacheEventLogging(
-        options.logCacheEvents === true && options.logger != null,
-        options.logger
+        options.debug === true || options.logCacheEvents === true,
+        logger
     );
     scheduleOpfsCacheWarmup();
-    const { folderName, include, exclude, enableLogging, pinned, logger, order = 0 } =
+    const { folderName, include, exclude, debug, pinned, order = 0 } =
         options;
-    const serve = opfsServeRange(buildServeOptions(options, order));
+    const serve = opfsServeRange(buildServeOptions({ ...options, logger }, order));
     const networkCache = opfsRangeFromNetworkAndCache({
         folderName,
         include,
         order: order + 1,
         ...(exclude !== undefined && { exclude }),
-        ...(enableLogging !== undefined && { enableLogging }),
+        ...(debug !== undefined && { debug }),
         ...(pinned !== undefined && { pinned }),
-        ...(logger !== undefined && { logger }),
+        logger,
     });
     const cacheControl = opfsCacheControl();
     return [serve, cacheControl, networkCache].filter((p): p is Plugin => p !== undefined);

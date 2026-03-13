@@ -57,9 +57,9 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
      */
     exclude?: string[];
     /**
-     * Включить логирование.
+     * Включить отладочное логирование. Используется переданный logger.
      */
-    enableLogging?: boolean;
+    debug?: boolean;
     /**
      * Логгер для этапа инициализации (например, варнинги по отброшенным паттернам include/exclude/pinned).
      * По умолчанию используется console.
@@ -78,13 +78,13 @@ async function backgroundFullFetchToOpfs(
     url: string,
     folderName: FolderName,
     logger: Logger,
-    enableLogging: boolean,
+    debug: boolean,
     fetchPassthrough: (request: Request) => Promise<Response>,
     pinned?: string[]
 ): Promise<void> {
     try {
         if (isInSkipList(url)) {
-            if (enableLogging) {
+            if (debug) {
                 logger.debug(
                     `${OPFS_RANGE_LOG_SW}skip ${url} (in skip list, quota exceeded)`
                 );
@@ -94,7 +94,7 @@ async function backgroundFullFetchToOpfs(
         const fullRequest = new Request(url, { method: 'GET' });
         const response = await fetchPassthrough(fullRequest);
         if (!response.ok || !response.body) {
-            if (enableLogging) {
+            if (debug) {
                 logger.debug(
                     `${OPFS_RANGE_LOG_SW}background full GET ${url} -> ${response.status}, skip cache`
                 );
@@ -102,7 +102,7 @@ async function backgroundFullFetchToOpfs(
             return;
         }
         if (response.status !== 200) {
-            if (enableLogging) {
+            if (debug) {
                 logger.debug(
                     `${OPFS_RANGE_LOG_SW}background full GET ${url} -> ${response.status}, skip cache`
                 );
@@ -120,7 +120,7 @@ async function backgroundFullFetchToOpfs(
             url,
             ...(metadata.size > 0 && { knownSize: metadata.size }),
         });
-        if (enableLogging) {
+        if (debug) {
             logger.debug(
                 `${OPFS_RANGE_LOG_SW}background cached ${url} -> ${key} (${metadata.size} bytes)`
             );
@@ -151,7 +151,7 @@ export function opfsRangeFromNetworkAndCache(
         order = -10,
         include,
         exclude,
-        enableLogging = false,
+        debug = false,
         pinned,
         logger = console,
     } = options;
@@ -183,7 +183,8 @@ export function opfsRangeFromNetworkAndCache(
             event: FetchEvent,
             context: PluginContext
         ): Promise<Response | undefined> {
-            const logger = context.logger ?? console;
+            if (!context.logger) throw new Error('PluginContext must provide logger');
+            const { logger } = context;
             const request = event.request;
             if (request.method !== 'GET') {
                 return;
@@ -233,7 +234,7 @@ export function opfsRangeFromNetworkAndCache(
                             err
                         );
                     });
-                    if (enableLogging) {
+                    if (debug) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}caching full GET ${url} (${metadata.size} bytes)`
                         );
@@ -248,9 +249,9 @@ export function opfsRangeFromNetworkAndCache(
                 }
             }
 
-            // Запрос с Range: при enableLogging проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
+            // Запрос с Range: при debug проверяем, есть ли файл в OPFS (для предупреждения); затем fetch.
             try {
-                if (enableLogging) {
+                if (debug) {
                     const key = await urlToOpfsKey(url);
                     const root = await getRoot();
                     let dir: FileSystemDirectoryHandle | undefined;
@@ -281,7 +282,7 @@ export function opfsRangeFromNetworkAndCache(
                         loadingUrls.add(url);
                         activeRangeCacheFetchCount += 1;
                         notifyClients(OPFS_MSG_RANGE_CACHE_FETCH_STARTED, { url });
-                        backgroundFullFetchToOpfs(url, folderName, logger, enableLogging, context.fetchPassthrough, normalizedPinned);
+                        backgroundFullFetchToOpfs(url, folderName, logger, debug, context.fetchPassthrough, normalizedPinned);
                     }
                     return new Response(response.body, {
                         status: response.status,

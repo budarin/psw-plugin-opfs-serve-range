@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.3 - 2026-03-13
+
+- **OPFS robustness:** `getRoot()` and `getPluginRoot()` no longer cache rejected promises — on failure the cached promise is cleared so the next call retries `navigator.storage.getDirectory()` / `getDirectoryHandle()`. `invalidateAllCachesAndPluginRoot()` now resets both the OPFS root and the plugin root promises, so after a `NotFoundError` new handles are obtained instead of keeping a broken state. In `writeToOpfs` and `opfsServeRange.fetch`, a `NotFoundError` on the cache directory or file triggers `invalidateAllCachesAndPluginRoot()`, which clears in-memory caches and lets subsequent requests fall back to the network.
+- **Client reconnect logging:** `reconnectPlayerOnFileLoadedIntoOpfs` and the React hook `useReconnectPlayerOnFileLoadedIntoOpfs` now gate their internal logging behind the `debug` flag: they only emit reconnect diagnostics when `debug: true`, keeping the default client console output quiet.
+
+## 4.0.2 - 2026-03-13
+
+- **Logging:** Debug logs now use the **logger** passed in options (e.g. `logger: console`), not `context.logger` from the framework, so `debug: true` actually produces output. Optional chaining (`logger.debug?.()`) used so any logger shape works.
+- **API:** **enableLogging** renamed to **debug** everywhere (opts, types, factories, README, reference). Single flag for all debug logging; when **debug: true** and **logger** is set, cache event logging (logCacheEvents) is also enabled. **logCacheEvents** remains for backward compatibility.
+
 ## 4.0.1 - 2026-03-13
 
 - **Bundle size:** Replaced the `lru-cache` dependency (~17 KB) with a minimal in-house LRU implementation (`src/lruCache.ts`): doubly-linked list + Map, supporting max entries, optional byte limit (maxSize + sizeCalculation), and dispose callback. Same API surface for metadata and range caches; no breaking changes.
@@ -185,7 +195,7 @@
     - Added RegExp cache in `matchesGlob()` (up to 64 patterns, FIFO eviction) to avoid recompiling glob patterns on repeated calls.
     - Parallelized file eviction in `evictFiles()`: uses `Promise.all()` instead of sequential `await` for faster deletion of multiple files.
     - Added shared `readMetadataFromFileFooter()` function in `opfsFormat` to eliminate code duplication; used by `opfsServeRange`, LRU logic, and client utilities.
-    - In `opfsRangeFromNetworkAndCache`: file existence check (for warning log) now runs only when `enableLogging === true`, avoiding unnecessary OPFS operations in production.
+    - In `opfsRangeFromNetworkAndCache`: file existence check (for warning log) now runs only when `debug === true`, avoiding unnecessary OPFS operations in production.
 - **New exports:**
     - `getRoot()` — cached OPFS root handle (exported from main entry point).
     - `readMetadataFromFileFooter()` — shared footer reader (exported from main entry point).
