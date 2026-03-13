@@ -7,6 +7,9 @@
 import type { Logger, Plugin } from '@budarin/pluggable-serviceworker';
 
 import type { FolderName } from './types.js';
+import { getFlatStoreDir } from './opfsUtil.js';
+import { ensureCachesPopulated } from './opfsEvictionIndex.js';
+import { setCacheEventLogging } from './opfsCacheEventLog.js';
 import { opfsServeRange, buildServeOptions } from './opfsServeRange.js';
 import { opfsBackgroundFetch, opfsBackgroundFetchFilter } from './opfsBackgroundFetch.js';
 import { opfsRegisteredFolders } from './opfsRegisteredFolders.js';
@@ -26,6 +29,7 @@ export {
 export {
     emitDroppedPatternWarnings,
     getOpfsDir,
+    getFlatStoreDir,
     getPluginRoot,
     getRoot,
     OPFS_PLUGIN_ROOT_DIR_NAME,
@@ -111,12 +115,15 @@ export interface CreateOpfsServeAndBackgroundFetchPluginsOptions {
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;
-    maxCacheFraction?: number;
     pinned?: string[];
     /**
      * Логгер для этапа инициализации фабрик (по умолчанию console).
      */
     logger?: Logger;
+    /**
+     * Логировать события кэша (заполнение, очистка, эвикция). Работает только при переданном logger.
+     */
+    logCacheEvents?: boolean;
     /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
     order?: number;
     rangeResponseCacheControl?: string;
@@ -131,18 +138,29 @@ export interface CreateOpfsServeAndNetworkCachePluginsOptions {
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;
-    maxCacheFraction?: number;
     pinned?: string[];
     /**
      * Логгер для этапа инициализации фабрик (по умолчанию console).
      */
     logger?: Logger;
+    /**
+     * Логировать события кэша (заполнение, очистка, эвикция). Работает только при переданном logger.
+     */
+    logCacheEvents?: boolean;
     /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
     order?: number;
     rangeResponseCacheControl?: string;
     rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
     rangeCacheMaxSizeBytes?: number;
     rangeCacheMaxEntries?: number;
+}
+
+function scheduleOpfsCacheWarmup(): void {
+    queueMicrotask(() => {
+        getFlatStoreDir()
+            .then((dir) => ensureCachesPopulated(dir))
+            .catch(() => {});
+    });
 }
 
 /**
@@ -152,7 +170,12 @@ export interface CreateOpfsServeAndNetworkCachePluginsOptions {
 export function createOpfsServeAndBackgroundFetchPlugins(
     options: CreateOpfsServeAndBackgroundFetchPluginsOptions
 ): Plugin[] {
-    const { folderName, include, exclude, enableLogging, maxCacheFraction, pinned, logger, order = 0 } =
+    setCacheEventLogging(
+        options.logCacheEvents === true && options.logger != null,
+        options.logger
+    );
+    scheduleOpfsCacheWarmup();
+    const { folderName, include, exclude, enableLogging, pinned, logger, order = 0 } =
         options;
     const serve = opfsServeRange(buildServeOptions(options, order));
     const filterPlugin = opfsBackgroundFetchFilter({
@@ -168,7 +191,6 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         ...(exclude !== undefined && { exclude }),
         ...(enableLogging !== undefined && { enableLogging }),
         ...(pinned !== undefined && { pinned }),
-        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
     const cacheControl = opfsCacheControl();
@@ -181,7 +203,12 @@ export function createOpfsServeAndBackgroundFetchPlugins(
 export function createOpfsServeAndNetworkCachePlugins(
     options: CreateOpfsServeAndNetworkCachePluginsOptions
 ): Plugin[] {
-    const { folderName, include, exclude, enableLogging, maxCacheFraction, pinned, logger, order = 0 } =
+    setCacheEventLogging(
+        options.logCacheEvents === true && options.logger != null,
+        options.logger
+    );
+    scheduleOpfsCacheWarmup();
+    const { folderName, include, exclude, enableLogging, pinned, logger, order = 0 } =
         options;
     const serve = opfsServeRange(buildServeOptions(options, order));
     const networkCache = opfsRangeFromNetworkAndCache({
@@ -191,7 +218,6 @@ export function createOpfsServeAndNetworkCachePlugins(
         ...(exclude !== undefined && { exclude }),
         ...(enableLogging !== undefined && { enableLogging }),
         ...(pinned !== undefined && { pinned }),
-        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(logger !== undefined && { logger }),
     });
     const cacheControl = opfsCacheControl();

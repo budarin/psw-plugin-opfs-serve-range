@@ -11,10 +11,9 @@ import type { FolderName } from './types.js';
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     emitDroppedPatternWarnings,
-    getOpfsDir,
+    getFlatStoreDir,
     getRangeCacheMaxEntries,
     getRangeCacheMaxSizeBytes,
-    getRoot,
     invalidateAllCachesForFolder,
     invalidateCachesForFileKeyOnError,
     isOpfsAvailable,
@@ -28,6 +27,7 @@ import {
     getOrCreateMetadataCache,
     type OpfsMetadataCacheEntry,
 } from './opfsMetadataCache.js';
+import type { RangeSpec } from './opfsRangeUtil.js';
 import {
     parseRangeHeader,
     build206Response,
@@ -79,10 +79,6 @@ export interface OpfsServeRangeOptions {
      */
     rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
     /**
-     * Доля квоты origin (0…1) для этой папки. При совместном использовании папки с другими плагинами должно совпадать.
-     */
-    maxCacheFraction?: number;
-    /**
      * Макс. размер in-memory кеша диапазонов (байты) для этой папки.
      */
     rangeCacheMaxSizeBytes?: number;
@@ -98,7 +94,6 @@ export interface ServeOptionsFromFactory {
     include: string[];
     exclude?: string[];
     enableLogging?: boolean;
-    maxCacheFraction?: number;
     logger?: Logger;
     order?: number;
     rangeResponseCacheControl?: string;
@@ -133,6 +128,31 @@ function ifRangeMatches(
     return false;
 }
 
+function build206FromBlobAndScheduleLastAccessed(
+    blob: Blob,
+    range: RangeSpec,
+    fullSize: number,
+    meta: OpfsMetadataCacheEntry,
+    rangeResponseCacheControl: string,
+    dir: FileSystemDirectoryHandle,
+    folderName: FolderName,
+    key: string,
+    event: FetchEvent
+): Response {
+    const response = build206Response(blob, range, fullSize, {
+        type: meta.type ?? MIME_APPLICATION_OCTET_STREAM,
+        ...(meta.etag && { etag: meta.etag }),
+        ...(meta.lastModified && { lastModified: meta.lastModified }),
+        ...(rangeResponseCacheControl && { cacheControl: rangeResponseCacheControl }),
+    });
+    if (meta.evictable !== false && event.waitUntil) {
+        event.waitUntil(
+            updateEvictionIndexLastAccessed(dir, folderName, key, Date.now())
+        );
+    }
+    return response;
+}
+
 /**
  * Плагин: перехватывает GET с Range и отдаёт диапазон из OPFS.
  * Один файл на URL: [тело][4 байта длина][JSON мета]. Папка задаётся опцией folderName. Очистка — clearOpfsCache(folderName).
@@ -151,7 +171,6 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
         logger = console,
         rangeResponseCacheControl = '',
         rangeCache,
-        maxCacheFraction,
         rangeCacheMaxSizeBytes,
         rangeCacheMaxEntries,
     } = options;
@@ -172,7 +191,6 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
     registerFolderConfig(folderName, {
-        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
         ...(rangeCacheMaxSizeBytes !== undefined && { rangeCacheMaxSizeBytes }),
         ...(rangeCacheMaxEntries !== undefined && { rangeCacheMaxEntries }),
     });
@@ -243,10 +261,9 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                 return;
             }
 
-            const root = await getRoot();
             let dir: FileSystemDirectoryHandle;
             try {
-                dir = await getOpfsDir(root, false, folderName);
+                dir = await getFlatStoreDir();
             } catch (err) {
                 if (err instanceof Error && err.name === 'NotFoundError') {
                     invalidateAllCachesForFolder(folderName);
@@ -293,10 +310,21 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     return;
                 }
                 const { metadata, bodySize } = footer;
+                if (metadata?.folderName !== folderName) {
+                    addUrlServedFromNetwork(event.clientId, pathname);
+                    if (enableLogging) {
+                        logger.debug(
+                            `${OPFS_RANGE_LOG_SW}file in OPFS but folderName mismatch for ${url}`
+                        );
+                    }
+                    return;
+                }
                 const size = metadata?.size ?? bodySize;
                 const meta: OpfsMetadataCacheEntry = {
                     fullSize: size,
                     type: metadata?.type ?? MIME_APPLICATION_OCTET_STREAM,
+                    folderName: metadata?.folderName,
+                    url: metadata?.url,
                     ...(metadata?.etag && { etag: metadata.etag }),
                     ...(metadata?.lastModified && {
                         lastModified: metadata.lastModified,
@@ -310,6 +338,15 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             }
 
             const meta = cachedMeta;
+            if (meta.folderName !== folderName) {
+                addUrlServedFromNetwork(event.clientId, pathname);
+                if (enableLogging) {
+                    logger.debug(
+                        `${OPFS_RANGE_LOG_SW}cached file folderName mismatch for ${url}`
+                    );
+                }
+                return;
+            }
             const size = meta.fullSize;
             const type = meta.type;
 
@@ -349,38 +386,17 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     if (cached !== undefined) {
                         const metaForResponse = metadataCache.get(key);
                         if (metaForResponse !== undefined) {
-                            const response = build206Response(
+                            const response = build206FromBlobAndScheduleLastAccessed(
                                 cached.blob,
                                 range,
                                 metaForResponse.fullSize,
-                                {
-                                    type:
-                                        metaForResponse.type ??
-                                        MIME_APPLICATION_OCTET_STREAM,
-                                    ...(metaForResponse.etag && {
-                                        etag: metaForResponse.etag,
-                                    }),
-                                    ...(metaForResponse.lastModified && {
-                                        lastModified: metaForResponse.lastModified,
-                                    }),
-                                    ...(rangeResponseCacheControl && {
-                                        cacheControl: rangeResponseCacheControl,
-                                    }),
-                                }
+                                metaForResponse,
+                                rangeResponseCacheControl,
+                                dir,
+                                folderName,
+                                key,
+                                event
                             );
-                            if (
-                                metaForResponse.evictable !== false &&
-                                event.waitUntil
-                            ) {
-                                event.waitUntil(
-                                    updateEvictionIndexLastAccessed(
-                                        dir,
-                                        folderName,
-                                        key,
-                                        Date.now()
-                                    )
-                                );
-                            }
                             if (enableLogging) {
                                 logger.debug(
                                     `${OPFS_RANGE_LOG_SW}206 from rangeCache for ${url} bytes ${range.start}-${range.end}`
@@ -396,34 +412,17 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     }
                     const blob = file.slice(range.start, range.end + 1);
                     rangeCache.set(key, range.start, range.end, blob);
-                    const response = build206Response(
+                    const response = build206FromBlobAndScheduleLastAccessed(
                         blob,
                         range,
                         size,
-                        {
-                            type,
-                            ...(meta.etag && { etag: meta.etag }),
-                            ...(meta.lastModified && {
-                                lastModified: meta.lastModified,
-                            }),
-                            ...(rangeResponseCacheControl && {
-                                cacheControl: rangeResponseCacheControl,
-                            }),
-                        }
+                        meta,
+                        rangeResponseCacheControl,
+                        dir,
+                        folderName,
+                        key,
+                        event
                     );
-                    if (
-                        meta.evictable !== false &&
-                        event.waitUntil
-                    ) {
-                        event.waitUntil(
-                            updateEvictionIndexLastAccessed(
-                                dir,
-                                folderName,
-                                key,
-                                Date.now()
-                            )
-                        );
-                    }
                     if (enableLogging) {
                         logger.debug(
                             `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end} (cached)`
@@ -492,7 +491,6 @@ export function buildServeOptions(
         order,
         ...(options.exclude !== undefined && { exclude: options.exclude }),
         ...(options.enableLogging !== undefined && { enableLogging: options.enableLogging }),
-        ...(options.maxCacheFraction !== undefined && { maxCacheFraction: options.maxCacheFraction }),
         ...(options.logger !== undefined && { logger: options.logger }),
         ...(options.rangeResponseCacheControl !== undefined && {
             rangeResponseCacheControl: options.rangeResponseCacheControl,

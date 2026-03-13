@@ -8,14 +8,14 @@ import type { FolderName, UrlString } from './types.js';
 import {
     getRegisteredFolderNames,
     getOpfsDir,
+    getFlatStoreDir,
     clearOpfsCache,
     getRoot,
 } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
-import { removeFromEvictionIndex } from './opfsEvictionIndex.js';
+import { ensureCachesPopulated, removeFromEvictionIndex } from './opfsEvictionIndex.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
-import { EVICTION_INDEX_FILENAME } from './opfsEvictionIndex.js';
 import {
     OPFS_REQUEST_DELETE_FROM_CACHE,
     OPFS_RESPONSE_DELETE_FROM_CACHE,
@@ -72,15 +72,42 @@ export function opfsCacheControl(): Plugin | undefined {
             const source = event.source;
             const { requestId, folderName } = data;
 
-            if (typeof folderName !== 'string' || folderName.trim() === '') {
-                const err = 'opfs: folderName required';
-                if (data.type === OPFS_REQUEST_DELETE_FROM_CACHE) {
+            if (data.type === OPFS_REQUEST_DELETE_FROM_CACHE) {
+                const url = data.url;
+                if (typeof url !== 'string' || url.trim() === '') {
                     sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
                         requestId,
                         ok: false,
-                        error: err,
+                        error: 'opfs: url required',
                     });
-                } else if (data.type === OPFS_REQUEST_HAS_IN_CACHE) {
+                    return;
+                }
+                try {
+                    const key = await urlToOpfsKey(url as UrlString);
+                    const dir = await getFlatStoreDir();
+                    try {
+                        await dir.removeEntry(key);
+                    } catch {
+                        // файла нет — не ошибка
+                    }
+                    await removeFromEvictionIndex(dir, [key], getRegisteredFolderNames());
+                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
+                        requestId,
+                        ok: true,
+                    });
+                } catch (err) {
+                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
+                        requestId,
+                        ok: false,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                }
+                return;
+            }
+
+            if (typeof folderName !== 'string' || folderName.trim() === '') {
+                const err = 'opfs: folderName required';
+                if (data.type === OPFS_REQUEST_HAS_IN_CACHE) {
                     sendResponse(source, OPFS_RESPONSE_HAS_IN_CACHE, {
                         requestId,
                         has: false,
@@ -104,13 +131,7 @@ export function opfsCacheControl(): Plugin | undefined {
 
             if (!isFolderRegistered(folderName)) {
                 const err = 'opfs: folder not registered';
-                if (data.type === OPFS_REQUEST_DELETE_FROM_CACHE) {
-                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
-                        requestId,
-                        ok: false,
-                        error: err,
-                    });
-                } else if (data.type === OPFS_REQUEST_HAS_IN_CACHE) {
+                if (data.type === OPFS_REQUEST_HAS_IN_CACHE) {
                     sendResponse(source, OPFS_RESPONSE_HAS_IN_CACHE, {
                         requestId,
                         has: false,
@@ -134,40 +155,6 @@ export function opfsCacheControl(): Plugin | undefined {
 
             const folder = folderName as FolderName;
 
-            if (data.type === OPFS_REQUEST_DELETE_FROM_CACHE) {
-                const url = data.url;
-                if (typeof url !== 'string' || url.trim() === '') {
-                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
-                        requestId,
-                        ok: false,
-                        error: 'opfs: url required',
-                    });
-                    return;
-                }
-                try {
-                    const key = await urlToOpfsKey(url as UrlString);
-                    const root = await getRoot();
-                    const dir = await getOpfsDir(root, false, folder);
-                    try {
-                        await dir.removeEntry(key);
-                    } catch {
-                        // файла нет — не ошибка
-                    }
-                    await removeFromEvictionIndex(dir, [key], folder);
-                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
-                        requestId,
-                        ok: true,
-                    });
-                } catch (err) {
-                    sendResponse(source, OPFS_RESPONSE_DELETE_FROM_CACHE, {
-                        requestId,
-                        ok: false,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
-                }
-                return;
-            }
-
             if (data.type === OPFS_REQUEST_HAS_IN_CACHE) {
                 const url = data.url;
                 if (typeof url !== 'string' || url.trim() === '') {
@@ -180,21 +167,25 @@ export function opfsCacheControl(): Plugin | undefined {
                 }
                 try {
                     const key = await urlToOpfsKey(url as UrlString);
-                    const metaCache = getMetadataCache(folder);
-                    if (metaCache?.get(key) !== undefined) {
+                    const root = await getRoot();
+                    const dir = await getOpfsDir(root, false, folder);
+                    await ensureCachesPopulated(dir);
+                    const metaCache = getMetadataCache();
+                    const entry = metaCache?.get(key);
+                    if (entry !== undefined && entry.folderName === folder) {
                         sendResponse(source, OPFS_RESPONSE_HAS_IN_CACHE, {
                             requestId,
                             has: true,
                         });
                         return;
                     }
-                    const root = await getRoot();
-                    const dir = await getOpfsDir(root, false, folder);
                     try {
-                        await dir.getFileHandle(key);
+                        const fileHandle = await dir.getFileHandle(key);
+                        const file = await fileHandle.getFile();
+                        const { metadata } = await readMetadataFromFileFooter(file);
                         sendResponse(source, OPFS_RESPONSE_HAS_IN_CACHE, {
                             requestId,
-                            has: true,
+                            has: metadata?.folderName === folder,
                         });
                     } catch {
                         sendResponse(source, OPFS_RESPONSE_HAS_IN_CACHE, {
@@ -216,27 +207,17 @@ export function opfsCacheControl(): Plugin | undefined {
                 try {
                     const root = await getRoot();
                     const dir = await getOpfsDir(root, false, folder);
+                    await ensureCachesPopulated(dir);
+                    const metaCache = getMetadataCache();
                     const resources: ListResource[] = [];
-                    for await (const [name, handle] of dir.entries()) {
-                        if (
-                            name === EVICTION_INDEX_FILENAME ||
-                            handle.kind !== 'file'
-                        ) {
-                            continue;
-                        }
-                        try {
-                            const file = await (handle as FileSystemFileHandle).getFile();
-                            const { metadata } = await readMetadataFromFileFooter(file);
-                            if (metadata?.url) {
-                                resources.push({
-                                    url: metadata.url,
-                                    size: metadata.size ?? file.size,
-                                    type: metadata.type,
-                                    lastModified: metadata.lastModified,
-                                });
-                            }
-                        } catch {
-                            // пропустить битый файл
+                    for (const [, entry] of metaCache?.getEntriesByFolder(folder) ?? []) {
+                        if (entry.url != null) {
+                            resources.push({
+                                url: entry.url,
+                                size: entry.fullSize,
+                                type: entry.type,
+                                lastModified: entry.lastModified,
+                            });
                         }
                     }
                     sendResponse(source, OPFS_RESPONSE_LIST_CACHED_RESOURCES, {

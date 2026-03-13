@@ -123,10 +123,6 @@ export interface OpfsBackgroundFetchOptions {
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
-    /**
-     * Доля квоты origin (0…1) для этой папки. При совместном использовании папки должно совпадать с другими плагинами.
-     */
-    maxCacheFraction?: number;
 }
 
 /**
@@ -142,7 +138,7 @@ export function opfsBackgroundFetch(
         return undefined;
     }
     const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
-    const { folderName, order = 0, include, exclude, enableLogging = false, pinned, maxCacheFraction, logger = console } = options;
+    const { folderName, order = 0, include, exclude, enableLogging = false, pinned, logger = console } = options;
     if (include == null || !Array.isArray(include) || include.length === 0) {
         throw new Error('opfs: include is required and must be a non-empty array');
     }
@@ -161,9 +157,7 @@ export function opfsBackgroundFetch(
     };
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
-    registerFolderConfig(folderName, {
-        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
-    });
+    registerFolderConfig(folderName, {});
 
     const filterPlugin = opfsBackgroundFetchFilter({
         include: normalizedInclude,

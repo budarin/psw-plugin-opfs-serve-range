@@ -5,9 +5,8 @@
 
 import type { FolderName, OpfsKey, UrlString } from './types.js';
 import { readMetadataFromFileFooter } from './opfsFormat.js';
-import { getMaxCacheFraction } from './opfsUtil.js';
+import { getMaxCacheFraction, getRegisteredFolderNames } from './opfsUtil.js';
 import {
-    EVICTION_INDEX_FILENAME,
     getEntriesForEviction,
     removeFromEvictionIndex,
     type EvictionIndexEntry,
@@ -50,10 +49,10 @@ export async function getStorageEstimate(): Promise<StorageEstimate> {
 }
 
 /**
- * Лимит кеша в байтах для папки: min(quota × maxCacheFraction, quota − usage).
+ * Лимит кеша в байтах: min(quota × maxCacheFraction, quota − usage). Использует глобальную долю квоты.
  */
-export function getCacheLimit(estimate: StorageEstimate, folderName: FolderName): number {
-    const fraction = getMaxCacheFraction(folderName);
+export function getCacheLimit(estimate: StorageEstimate): number {
+    const fraction = getMaxCacheFraction();
     const byFraction = Math.floor(estimate.quota * fraction);
     const byAvailable = estimate.quota - estimate.usage;
     return Math.max(0, Math.min(byFraction, byAvailable));
@@ -74,16 +73,12 @@ async function readMetaFromFile(file: File): Promise<{ size: number; lastAccesse
 
 /**
  * Сканирует папку кеша и возвращает список файлов с размером и lastAccessed.
- * Файл индекса эвикции (_eviction_index.json) не включается.
  */
 export async function listCacheFilesWithMeta(
     dir: FileSystemDirectoryHandle
 ): Promise<CacheFileEntry[]> {
     const entries: CacheFileEntry[] = [];
     for await (const [name, handle] of dir.entries()) {
-        if (name === EVICTION_INDEX_FILENAME) {
-            continue;
-        }
         if (handle.kind === 'file') {
             try {
                 const file = await (handle as FileSystemFileHandle).getFile();
@@ -168,7 +163,7 @@ export async function ensureSpaceForWrite(
 ): Promise<EnsureSpaceResult> {
     const { folderName, onEvicted, excludeKeyFromEviction } = options;
     const estimate = await getStorageEstimate();
-    const limit = getCacheLimit(estimate, folderName);
+    const limit = getCacheLimit(estimate);
     const { entries, totalSize } = await getEntriesForEviction(dir, folderName);
 
     const needToFree = Math.max(
@@ -205,7 +200,7 @@ export async function ensureSpaceForWrite(
 
     const keysToDelete = computeEvictionSet(entriesForEviction, needToFreeOther);
     await evictFiles(dir, keysToDelete);
-    await removeFromEvictionIndex(dir, keysToDelete, folderName);
+    await removeFromEvictionIndex(dir, keysToDelete, getRegisteredFolderNames());
     onEvicted?.(keysToDelete);
     return { ok: true, evictedKeys: keysToDelete };
 }

@@ -1,6 +1,6 @@
 /**
- * In-memory LRU-кеш метаданных файлов OPFS по opfsKey.
- * Используется в opfsServeRange, чтобы не читать футер при повторных запросах к тому же ресурсу.
+ * In-memory LRU-кеш метаданных файлов OPFS по opfsKey (один глобальный кэш для плоского хранилища).
+ * Запись содержит folderName для фильтра при serve/list/clear.
  * Инвалидация при эвикции (removeFromEvictionIndex) и при clearOpfsCache.
  */
 
@@ -10,6 +10,10 @@ import { LRUCache } from 'lru-cache';
 export interface OpfsMetadataCacheEntry {
     fullSize: number;
     type: string;
+    /** Логическая папка файла (для фильтра при serve/list/clear). */
+    folderName?: string;
+    /** URL ресурса (для list без чтения файла). */
+    url?: string;
     etag?: string;
     lastModified?: string;
     evictable?: boolean;
@@ -23,7 +27,10 @@ export interface MetadataCacheLimits {
     onEvictKey?: (key: OpfsKey) => void;
 }
 
-const cacheByFolder = new Map<FolderName, MetadataCacheImpl>();
+let globalMetadataCache: MetadataCacheImpl | null = null;
+
+/** Callbacks to run when a key is evicted from the global cache (one per folder). */
+const evictCallbacksByFolder = new Map<FolderName, (key: OpfsKey) => void>();
 
 export class MetadataCacheImpl {
     private readonly cache: LRUCache<string, OpfsMetadataCacheEntry>;
@@ -52,6 +59,22 @@ export class MetadataCacheImpl {
         }
     }
 
+    invalidateEntriesByFolder(folderName: FolderName): void {
+        for (const [key, entry] of this.cache.entries()) {
+            if (entry.folderName === folderName) {
+                this.cache.delete(key);
+            }
+        }
+    }
+
+    *getEntriesByFolder(folderName: FolderName): IterableIterator<[OpfsKey, OpfsMetadataCacheEntry]> {
+        for (const [key, entry] of this.cache.entries()) {
+            if (entry.folderName === folderName) {
+                yield [key, entry];
+            }
+        }
+    }
+
     invalidateAll(): void {
         this.cache.clear();
     }
@@ -61,14 +84,24 @@ export function getOrCreateMetadataCache(
     folderName: FolderName,
     limits: MetadataCacheLimits = {}
 ): MetadataCacheImpl {
-    let cache = cacheByFolder.get(folderName);
-    if (cache === undefined) {
-        cache = new MetadataCacheImpl(limits);
-        cacheByFolder.set(folderName, cache);
+    if (limits.onEvictKey !== undefined) {
+        evictCallbacksByFolder.set(folderName, limits.onEvictKey);
     }
-    return cache;
+    if (globalMetadataCache === null) {
+        const maxEntries = limits.maxEntries ?? DEFAULT_MAX_ENTRIES;
+        globalMetadataCache = new MetadataCacheImpl({
+            maxEntries,
+            onEvictKey: (key) => {
+                for (const cb of evictCallbacksByFolder.values()) {
+                    cb(key);
+                }
+            },
+        });
+    }
+    return globalMetadataCache;
 }
 
-export function getMetadataCache(folderName: FolderName): MetadataCacheImpl | null {
-    return cacheByFolder.get(folderName) ?? null;
+/** Returns the global metadata cache or null if not yet created. */
+export function getMetadataCache(): MetadataCacheImpl | null {
+    return globalMetadataCache;
 }

@@ -25,7 +25,7 @@ import {
     registerFileInCache,
     removeFromEvictionIndex,
 } from './opfsEvictionIndex.js';
-import { invalidateAllCachesForFolder } from './opfsUtil.js';
+import { getRegisteredFolderNames, invalidateAllCachesForFolder } from './opfsUtil.js';
 import {
     OPFS_MSG_WRITE_SKIPPED_SIZE,
     OPFS_MSG_QUOTA_EXCEEDED,
@@ -65,6 +65,13 @@ export async function writeToOpfs(
 ): Promise<void> {
     const { folderName, url, knownSize, excludeKeyFromEviction } = options;
 
+    try {
+        await dir.getFileHandle(key);
+        return;
+    } catch {
+        // файла нет — пишем
+    }
+
     if (knownSize !== undefined && knownSize > 0) {
         const result = await ensureSpaceForWrite(dir, knownSize, {
             folderName,
@@ -100,6 +107,7 @@ export async function writeToOpfs(
         async close() {
             const meta: OpfsMetadata = {
                 ...metadata,
+                folderName,
                 size: bodySize,
                 lastAccessed: Date.now(),
             };
@@ -147,12 +155,12 @@ export async function writeToOpfs(
                 notifyClients(OPFS_MSG_QUOTA_EXCEEDED, { url });
             } else {
                 const estimate = await getStorageEstimate();
-                const limit = getCacheLimit(estimate, folderName);
+                const limit = getCacheLimit(estimate);
                 const headroom = Math.min(MEGABYTE, Math.max(0, Math.floor(limit * 0.1)));
                 const needToFree = bytesWritten + headroom;
                 const keysToDelete = computeEvictionSet(entries, needToFree);
                 await evictFiles(dir, keysToDelete);
-                await removeFromEvictionIndex(dir, keysToDelete, folderName);
+                await removeFromEvictionIndex(dir, keysToDelete, getRegisteredFolderNames());
             }
         }
         notifyClients(OPFS_MSG_WRITE_FAILED, { url, reason: err instanceof Error ? err.message : String(err) });

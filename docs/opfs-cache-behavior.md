@@ -17,6 +17,8 @@ The cache limits in the plugins are not about “protecting the disk”; they ar
 
 ## 2. Configuration
 
+**Why folders:** different groups of files need different caching settings (quota share, range cache size, eviction behavior, include patterns, etc.). A **folder** is the name of such a group; each folder has one set of plugin options attached to it.
+
 Each plugin requires **`folderName: string`** in its options. One folder = one cache. When several plugins share the same folder, they must use the same **folderName** and consistent settings; **registerFolderConfig** (called by plugin factories) throws otherwise.
 
 **Global limit:** **getGlobalMaxCacheFraction()** returns the cap for the sum of all folders’ effective fractions (default `0.5`). **setGlobalMaxCacheFraction(fraction)** sets it (must be in `(0, 1]`). When the sum of per-folder `maxCacheFraction` values exceeds this cap, each folder’s **effective** fraction is scaled down proportionally so that the sum equals the global limit. No error is thrown; **getMaxCacheFraction(folderName)** returns the effective (possibly scaled) value.

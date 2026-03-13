@@ -3,23 +3,21 @@ import { getCacheLimit, computeEvictionSet, type StorageEstimate } from '../src/
 import type { EvictionIndexEntry } from '../src/opfsEvictionIndex.ts';
 
 describe('getCacheLimit', () => {
-    const folderName = 'test-cache';
-
-    it('respects maxCacheFraction and available space', () => {
+    it('respects global maxCacheFraction and available space', () => {
         const estimate: StorageEstimate = { quota: 1000, usage: 400 };
-        const limit = getCacheLimit(estimate, folderName);
+        const limit = getCacheLimit(estimate);
         expect(limit).toBe(500);
     });
 
     it('limits by available space when usage is high', () => {
         const estimate: StorageEstimate = { quota: 1000, usage: 950 };
-        const limit = getCacheLimit(estimate, folderName);
+        const limit = getCacheLimit(estimate);
         expect(limit).toBe(50);
     });
 
     it('returns zero when quota is zero', () => {
         const estimate: StorageEstimate = { quota: 0, usage: 0 };
-        const limit = getCacheLimit(estimate, folderName);
+        const limit = getCacheLimit(estimate);
         expect(limit).toBe(0);
     });
 });

@@ -33,37 +33,12 @@ describe('global max cache fraction', () => {
     });
 });
 
-describe('getMaxCacheFraction with proportional scaling', () => {
-    it('returns default for unregistered folder', () => {
-        expect(getMaxCacheFraction('unknown')).toBe(0.5);
-    });
-
-    it('returns stored fraction when sum <= global limit', () => {
-        registerFolderConfig('folder-a', { maxCacheFraction: 0.3 });
-        expect(getMaxCacheFraction('folder-a')).toBe(0.3);
-        registerFolderConfig('folder-b', { maxCacheFraction: 0.2 });
-        expect(getMaxCacheFraction('folder-a')).toBe(0.3);
-        expect(getMaxCacheFraction('folder-b')).toBe(0.2);
-    });
-
-    it('returns proportionally scaled fraction when sum > global limit', () => {
-        setGlobalMaxCacheFraction(0.5);
-        registerFolderConfig('video', { maxCacheFraction: 0.5 });
-        registerFolderConfig('audio', { maxCacheFraction: 0.5 });
-        // sum = 1.0 > 0.5 → scale factor 0.5/1.0 = 0.5 → each gets 0.25
-        expect(getMaxCacheFraction('video')).toBe(0.25);
-        expect(getMaxCacheFraction('audio')).toBe(0.25);
-    });
-
-    it('preserves ratios when scaling (sum 2.5, global 0.5)', () => {
-        setGlobalMaxCacheFraction(0.5);
-        registerFolderConfig('a', { maxCacheFraction: 0.5 });
-        registerFolderConfig('b', { maxCacheFraction: 1.0 });
-        registerFolderConfig('c', { maxCacheFraction: 1.0 });
-        // sum = 2.5, scale = 0.5/2.5 = 0.2 → a: 0.1, b: 0.2, c: 0.2
-        expect(getMaxCacheFraction('a')).toBe(0.1);
-        expect(getMaxCacheFraction('b')).toBe(0.2);
-        expect(getMaxCacheFraction('c')).toBe(0.2);
+describe('getMaxCacheFraction (global limit)', () => {
+    it('returns global fraction (same as getGlobalMaxCacheFraction)', () => {
+        expect(getMaxCacheFraction()).toBe(0.5);
+        setGlobalMaxCacheFraction(0.3);
+        expect(getMaxCacheFraction()).toBe(0.3);
+        expect(getMaxCacheFraction()).toBe(getGlobalMaxCacheFraction());
     });
 });
 

@@ -440,10 +440,7 @@ export async function hasInOpfsCache(
     }
 }
 
-export async function deleteFromOpfsCache(
-    url: UrlString,
-    folderName: FolderName
-): Promise<void> {
+export async function deleteFromOpfsCache(url: UrlString): Promise<void> {
     if (
         typeof navigator === 'undefined' ||
         navigator?.serviceWorker?.controller == null
@@ -454,7 +451,7 @@ export async function deleteFromOpfsCache(
     await sendCacheControlRequest(
         OPFS_REQUEST_DELETE_FROM_CACHE,
         OPFS_RESPONSE_DELETE_FROM_CACHE,
-        { requestId, url, folderName }
+        { requestId, url }
     );
 }
 

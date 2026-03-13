@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.0.0 - 2026-03-13
+
+**Breaking:** Storage structure refactored to a **flat store**; global storage limit only; API signature changes. No migration from the previous layout — caches are not converted automatically.
+
+**Storage structure (flat store)**
+
+- **Single directory:** All cached files live in one directory under the plugin root (OPFS root → **OPFS_PLUGIN_ROOT_DIR_NAME** → one dir). No subdirectories per folderName. File name = key = `hex(SHA-256(url))`; one file per URL.
+- **folderName is logical only:** Stored in each file’s metadata (footer). Used for filtering on serve (plugin serves only when `metadata.folderName === folderName`), for **listOpfsCachedResources** / **clearOpfsCache** (list/clear by folder), and for plugin config grouping. **getFlatStoreDir()** returns this single directory; **getOpfsDir** is a compatibility wrapper.
+- **Eviction index in memory only:** No `_eviction_index.json` on disk. Evictable entries (key, size, lastAccessed) are kept in memory and repopulated by a directory scan when needed (e.g. on first **ensureSpaceForWrite** or **listOpfsCachedResources**). **lastAccessed** is still written to the file footer in the background (throttled).
+
+**API and config**
+
+- **getMaxCacheFraction()** — no argument. Returns the global fraction (same as getGlobalMaxCacheFraction()). **Removed:** getMaxCacheFraction(folderName). Set the limit via **setGlobalMaxCacheFraction(fraction)** only.
+- **getCacheLimit(estimate)** — single argument. **Removed:** second argument folderName. Limit is computed from the global fraction only.
+- **FolderCacheConfig** (registerFolderConfig) — **removed** **maxCacheFraction**. Config now only has rangeCacheMaxSizeBytes?, rangeCacheMaxEntries?.
+- **Plugin options** — **removed** **maxCacheFraction** from OpfsServeRangeOptions, ServeOptionsFromFactory, OpfsBackgroundFetchOptions, OpfsRangeFromNetworkAndCacheOptions, CreateOpfsServeAndBackgroundFetchPluginsOptions, CreateOpfsServeAndNetworkCachePluginsOptions. Use setGlobalMaxCacheFraction() before registering plugins to set the cache limit.
+- **getMetadataCache()** (opfsMetadataCache) — no argument. Returns the global metadata cache or null. **Removed:** parameter folderName. Internal; multiple folders can register onEvictKey via getOrCreateMetadataCache(folderName, { onEvictKey }); all callbacks run when a key is evicted.
+- **opfsServeRange** — serve path uses **getFlatStoreDir()** directly (no getRoot + getOpfsDir). Common 206 + lastAccessed update extracted to **build206FromBlobAndScheduleLastAccessed**.
+- **Range cache** — **RangeCacheImpl.invalidateForKey(opfsKey)** now uses a reverse index (opfsKey → set of cache keys) so invalidation is O(entries for that key) instead of O(all entries). dispose callback keeps the index in sync on LRU eviction.
+- **Docs:** reference.md — global limit, getMaxCacheFraction(), getCacheLimit(estimate), getFlatStoreDir, metadata cache and range cache behavior, FolderCacheConfig without maxCacheFraction. README and README.ru — flat store and storage format section, global quota only, getMaxCacheFraction()/getCacheLimit(estimate), getFlatStoreDir, FolderCacheConfig and plugin options without maxCacheFraction.
+
 ## 3.11.0 - 2026-03-13
 
 - **Docs:** README and README.ru — clarified behavior when **folderName** is not registered in the SW: **listOpfsCachedResources** and **hasInOpfsCache** return `[]` and `false`; **deleteFromOpfsCache** and **clearOpfsCache** reject the promise with `opfs: folder not registered`.

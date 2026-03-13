@@ -69,10 +69,6 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
-    /**
-     * Доля квоты origin (0…1) для этой папки. При совместном использовании папки должно совпадать с другими плагинами.
-     */
-    maxCacheFraction?: number;
 }
 
 /**
@@ -157,7 +153,6 @@ export function opfsRangeFromNetworkAndCache(
         exclude,
         enableLogging = false,
         pinned,
-        maxCacheFraction,
         logger = console,
     } = options;
     if (include == null || !Array.isArray(include) || include.length === 0) {
@@ -178,9 +173,7 @@ export function opfsRangeFromNetworkAndCache(
     };
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
-    registerFolderConfig(folderName, {
-        ...(maxCacheFraction !== undefined && { maxCacheFraction }),
-    });
+    registerFolderConfig(folderName, {});
 
     return {
         name: 'opfs-range-from-network-and-cache',

@@ -25,6 +25,8 @@ export interface OpfsMetadata {
     /** Исходный URL ресурса, для которого создан этот файл. */
     url: UrlString;
     size: number;
+    /** Логическая папка, к которой относится файл (группа для list/clear/настроек плагина). */
+    folderName?: string;
     type?: string;
     etag?: string;
     lastModified?: string;

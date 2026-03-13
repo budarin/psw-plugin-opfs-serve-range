@@ -42,12 +42,23 @@ function keyToOpfsKey(cacheKeyStr: string): string {
 
 export class RangeCacheImpl {
     private readonly cache: LRUCache<string, RangeCacheEntry>;
+    /** Reverse index: opfsKey → set of cache keys, for O(1) invalidateForKey. */
+    private readonly keysByOpfsKey = new Map<OpfsKey, Set<string>>();
 
     constructor(limits: RangeCacheLimits) {
+        const keysByOpfsKey = this.keysByOpfsKey;
         this.cache = new LRUCache<string, RangeCacheEntry>({
             max: limits.maxEntries,
             maxSize: limits.maxSizeBytes,
             sizeCalculation: (entry) => entry.blob.size,
+            dispose: (_value, key) => {
+                const opfsK = keyToOpfsKey(key);
+                const set = keysByOpfsKey.get(opfsK);
+                if (set !== undefined) {
+                    set.delete(key);
+                    if (set.size === 0) keysByOpfsKey.delete(opfsK);
+                }
+            },
         });
     }
 
@@ -62,6 +73,12 @@ export class RangeCacheImpl {
 
     set(opfsKey: OpfsKey, start: number, end: number, blob: Blob): void {
         const key = cacheKey(opfsKey, start, end);
+        let set = this.keysByOpfsKey.get(opfsKey);
+        if (set === undefined) {
+            set = new Set();
+            this.keysByOpfsKey.set(opfsKey, set);
+        }
+        set.add(key);
         this.cache.set(key, {
             blob,
             lastAccessed: Date.now(),
@@ -69,15 +86,17 @@ export class RangeCacheImpl {
     }
 
     invalidateForKey(opfsKey: OpfsKey): void {
-        for (const key of this.cache.keys()) {
-            if (keyToOpfsKey(key) === opfsKey) {
-                this.cache.delete(key);
-            }
+        const set = this.keysByOpfsKey.get(opfsKey);
+        if (set === undefined) return;
+        for (const key of set) {
+            this.cache.delete(key);
         }
+        this.keysByOpfsKey.delete(opfsKey);
     }
 
     invalidateAll(): void {
         this.cache.clear();
+        this.keysByOpfsKey.clear();
     }
 }
 

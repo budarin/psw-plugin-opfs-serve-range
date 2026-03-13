@@ -3,12 +3,16 @@
  */
 
 import type { FolderName, OpfsKey, UrlString } from './types.js';
-import { invalidateCacheForDir, removeFromEvictionIndex } from './opfsEvictionIndex.js';
+import { readMetadataFromFileFooter } from './opfsFormat.js';
+import {
+    invalidateCacheForDir,
+    removeFromEvictionIndex,
+} from './opfsEvictionIndex.js';
 import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
 import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
+import { logCacheEvent } from './opfsCacheEventLog.js';
 
-const DEFAULT_MAX_CACHE_FRACTION = 0.5;
 const DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_RANGE_CACHE_MAX_ENTRIES = 300;
 
@@ -35,7 +39,6 @@ export function resetFolderRegistryForTests(): void {
 
 /** Конфиг кеша для одной папки (лимиты). При повторной регистрации того же folderName должен совпадать. */
 export interface FolderCacheConfig {
-    maxCacheFraction?: number;
     rangeCacheMaxSizeBytes?: number;
     rangeCacheMaxEntries?: number;
 }
@@ -68,21 +71,17 @@ function parseUrlSafe(url: UrlString, base?: string): URL | null {
 }
 
 function normalizeFolderConfig(config: FolderCacheConfig = {}): Required<FolderCacheConfig> {
-    const v = config.maxCacheFraction;
-    const maxCacheFraction =
-        v === undefined || v < 0 || v > 1 ? DEFAULT_MAX_CACHE_FRACTION : v;
     const vb = config.rangeCacheMaxSizeBytes;
     const rangeCacheMaxSizeBytes =
         vb === undefined || vb < 0 ? DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES : vb;
     const ve = config.rangeCacheMaxEntries;
     const rangeCacheMaxEntries =
         ve === undefined || ve < 0 ? DEFAULT_RANGE_CACHE_MAX_ENTRIES : ve;
-    return { maxCacheFraction, rangeCacheMaxSizeBytes, rangeCacheMaxEntries };
+    return { rangeCacheMaxSizeBytes, rangeCacheMaxEntries };
 }
 
 function configsEqual(a: Required<FolderCacheConfig>, b: Required<FolderCacheConfig>): boolean {
     return (
-        a.maxCacheFraction === b.maxCacheFraction &&
         a.rangeCacheMaxSizeBytes === b.rangeCacheMaxSizeBytes &&
         a.rangeCacheMaxEntries === b.rangeCacheMaxEntries
     );
@@ -160,7 +159,7 @@ export function registerFolderConfig(
     if (existing !== undefined) {
         if (!configsEqual(existing, normalized)) {
             throw new Error(
-                `opfs: folder "${folderName}" is already registered with different cache settings (maxCacheFraction, rangeCacheMaxSizeBytes, or rangeCacheMaxEntries)`
+                `opfs: folder "${folderName}" is already registered with different cache settings (rangeCacheMaxSizeBytes or rangeCacheMaxEntries)`
             );
         }
         return;
@@ -199,7 +198,7 @@ export function getRoot(): Promise<FileSystemDirectoryHandle> {
 
 /**
  * Возвращает корневую папку плагина в OPFS (OPFS_PLUGIN_ROOT_DIR_NAME). Создаётся при отсутствии.
- * Кешируется на время жизни воркера. Все папки кешей (folderName) лежат внутри неё.
+ * Кешируется на время жизни воркера. Все файлы хранятся в ней плоским списком (один каталог).
  */
 export async function getPluginRoot(): Promise<FileSystemDirectoryHandle> {
     if (cachedPluginRootPromise === null) {
@@ -209,6 +208,11 @@ export async function getPluginRoot(): Promise<FileSystemDirectoryHandle> {
         });
     }
     return cachedPluginRootPromise;
+}
+
+/** Возвращает единственный каталог плоского хранилища (все файлы по ключу). Совпадает с getPluginRoot(). */
+export async function getFlatStoreDir(): Promise<FileSystemDirectoryHandle> {
+    return getPluginRoot();
 }
 
 /**
@@ -223,18 +227,9 @@ export function isOpfsAvailable(): boolean {
     );
 }
 
-/** Доля квоты для папки. Если сумма долей всех папок > глобального лимита — возвращается пропорционально уменьшенная доля. */
-export function getMaxCacheFraction(folderName: FolderName): number {
-    const c = folderRegistry.get(folderName);
-    const stored = c?.maxCacheFraction ?? DEFAULT_MAX_CACHE_FRACTION;
-    let sum = 0;
-    for (const entry of folderRegistry.values()) {
-        sum += entry.maxCacheFraction;
-    }
-    if (sum <= globalMaxCacheFraction) {
-        return stored;
-    }
-    return stored * (globalMaxCacheFraction / sum);
+/** Глобальная доля квоты origin (0…1), которую может занимать кеш. Задаётся через setGlobalMaxCacheFraction. */
+export function getMaxCacheFraction(): number {
+    return globalMaxCacheFraction;
 }
 
 /** Лимит размера in-memory кеша range-ответов для папки. */
@@ -317,9 +312,6 @@ export function shouldProcessFile(
     return false;
 }
 
-/** Кеш папки по folderName, чтобы не вызывать getDirectoryHandle при каждом запросе. Сбрасывается в clearOpfsCache. */
-const dirCacheByFolder = new Map<string, FileSystemDirectoryHandle>();
-
 /**
  * Сбрасывает кеш корневой папки плагина и инвалидирует in-memory кэши для всех зарегистрированных папок.
  * Вызывать при ошибке доступа к папке под плагин-корнем (уровень «корневая папка»).
@@ -332,35 +324,15 @@ export function invalidateAllCachesAndPluginRoot(): void {
 }
 
 /**
- * Возвращает папку кеша в OPFS по имени. Путь: корень OPFS → OPFS_PLUGIN_ROOT_DIR_NAME → folderName.
- * Результат кешируется; при clearOpfsCache кеш для папки сбрасывается.
- * При ошибке доступа к папке (например корень плагина удалён) выполняет инвалидацию уровня «корневая папка» и одну повторную попытку.
- *
- * @param _root — корень OPFS (для совместимости API; фактически используется getPluginRoot())
- * @param create — если true, создаёт папку при отсутствии; если false, при отсутствии будет выброшена ошибка
- * @param folderName — имя папки кеша (обязательно, задаётся в опциях плагина)
+ * Возвращает каталог плоского хранилища (все файлы в одном каталоге по ключу).
+ * Параметры _root, create, folderName сохранены для совместимости API; фактически возвращается getFlatStoreDir().
  */
 export async function getOpfsDir(
     _root: FileSystemDirectoryHandle,
-    create: boolean,
-    folderName: FolderName
+    _create: boolean,
+    _folderName: FolderName
 ): Promise<FileSystemDirectoryHandle> {
-    const cached = dirCacheByFolder.get(folderName);
-    if (cached !== undefined) {
-        return cached;
-    }
-    const pluginRoot = await getPluginRoot();
-    try {
-        const dir = await pluginRoot.getDirectoryHandle(folderName, { create });
-        dirCacheByFolder.set(folderName, dir);
-        return dir;
-    } catch {
-        invalidateAllCachesAndPluginRoot();
-        const pluginRootRetry = await getPluginRoot();
-        const dir = await pluginRootRetry.getDirectoryHandle(folderName, { create });
-        dirCacheByFolder.set(folderName, dir);
-        return dir;
-    }
+    return getFlatStoreDir();
 }
 
 /**
@@ -374,7 +346,7 @@ export async function invalidateCachesForFileKeyOnError(
     key: OpfsKey
 ): Promise<void> {
     try {
-        await removeFromEvictionIndex(dir, [key], folderName);
+        await removeFromEvictionIndex(dir, [key], getRegisteredFolderNames());
     } catch {
         invalidateAllCachesForFolder(folderName);
     }
@@ -387,21 +359,37 @@ export async function invalidateCachesForFileKeyOnError(
 export function invalidateAllCachesForFolder(folderName: FolderName): void {
     invalidateCacheForDir(folderName);
     getRangeCache(folderName)?.invalidateAll();
-    getMetadataCache(folderName)?.invalidateAll();
-    dirCacheByFolder.delete(folderName);
+    getMetadataCache()?.invalidateEntriesByFolder(folderName);
 }
 
 /**
- * Удаляет папку в OPFS со всем содержимым. Сбрасывает in-memory кеш индекса эвикции и range cache для этой папки.
+ * Удаляет с диска все файлы, у которых в метаданных указан данный folderName.
+ * Сбрасывает in-memory кэши для этой папки.
  *
- * @param folderName — имя папки (обязательно)
+ * @param folderName — логическая папка (обязательно)
  */
 export async function clearOpfsCache(folderName: FolderName): Promise<void> {
-    invalidateAllCachesForFolder(folderName);
-    const pluginRoot = await getPluginRoot();
-    try {
-        await pluginRoot.removeEntry(folderName, { recursive: true });
-    } catch {
-        // папки не было — не ошибка
+    const dir = await getFlatStoreDir();
+    const toDelete: string[] = [];
+    for await (const [name, handle] of dir.entries()) {
+        if (handle.kind !== 'file') continue;
+        try {
+            const file = await (handle as FileSystemFileHandle).getFile();
+            const { metadata } = await readMetadataFromFileFooter(file);
+            if (metadata?.folderName === folderName) {
+                toDelete.push(name);
+            }
+        } catch {
+            // пропустить битый файл
+        }
     }
+    for (const name of toDelete) {
+        try {
+            await dir.removeEntry(name);
+        } catch {
+            // уже удалён или ошибка — пропустить
+        }
+    }
+    logCacheEvent(`cache cleared for folder: ${folderName}, ${toDelete.length} files removed`);
+    invalidateAllCachesForFolder(folderName);
 }
