@@ -1,5 +1,8 @@
 /**
  * Переподключение медиа-элемента к тому же URL из OPFS после записи файла (Background Fetch).
+ *
+ * Допущения: элемент находится в DOM; для видео используется wrapper/overlay и сохранение стилей —
+ * поведение может быть хрупким при сложной вёрстке (вложенные контейнеры, динамическое изменение размеров).
  */
 
 import type { Logger } from '@budarin/pluggable-serviceworker';
@@ -24,6 +27,10 @@ function hasExplicitDimensions(el: HTMLVideoElement): boolean {
     );
 }
 
+/**
+ * Перезагружает элемент с текущим src (тот же URL), сохраняя позицию и состояние воспроизведения.
+ * Для видео при необходимости создаёт wrapper и overlay (canvas) для сохранения кадра при переключении источника.
+ */
 async function reconnectMediaElementToCurrentSrcFromOpfs(
     element: HTMLMediaElement
 ): Promise<void> {
@@ -233,6 +240,8 @@ export interface ReconnectPlayerOnFileLoadedIntoOpfsOptions {
  * Если event.data.asset совпадает с текущим источником плеера и файл в OPFS —
  * переподключает плеер к тому же URL (из OPFS), сохраняя позицию и состояние.
  * Вызывать из обработчика onOPFSBackgroundFetchFileWritten.
+ *
+ * Допущения: element в DOM; для видео — см. reconnectMediaElementToCurrentSrcFromOpfs (wrapper/overlay).
  */
 export async function reconnectPlayerOnFileLoadedIntoOpfs(
     element: HTMLMediaElement,

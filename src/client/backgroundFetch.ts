@@ -27,6 +27,7 @@ import {
     onOPFSBackgroundFetchAborted,
     onOPFSBackgroundFetchFileWritten,
 } from './messageHandlers.js';
+import { OPFS_RANGE_LOG_CLIENT } from '../opfsLog.js';
 import { listOpfsCachedResources } from './cacheControl.js';
 
 /** Код ошибки: папка не зарегистрирована в SW (startDownloadAssetsToOpfs отказывает в старте). */
@@ -379,7 +380,7 @@ export async function startDownloadAssetsToOpfs(
         );
         (err as Error & { code: string }).code =
             OPFS_ERROR_SERVICE_WORKER_UNAVAILABLE;
-        logger.error(err.message);
+        logger.error(`${OPFS_RANGE_LOG_CLIENT}${err.message}`);
         throw err;
     }
     if (!registeredFolders.includes(folderName)) {
@@ -388,7 +389,7 @@ export async function startDownloadAssetsToOpfs(
         );
         (err_1 as Error & { code: string }).code =
             OPFS_ERROR_FOLDER_NOT_REGISTERED;
-        logger.error(err_1.message);
+        logger.error(`${OPFS_RANGE_LOG_CLIENT}${err_1.message}`);
         throw err_1;
     }
     const assetsToUse = filterAssetsForOpfs(

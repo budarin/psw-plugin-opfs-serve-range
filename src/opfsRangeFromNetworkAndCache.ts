@@ -324,7 +324,7 @@ export function opfsRangeFromNetworkAndCache(
                             knownSize: fullSize,
                         }).catch((err) => {
                                 logger.error(
-                                    `opfsRangeFromNetworkAndCache: write failed ${url}`,
+                                    `${OPFS_RANGE_LOG_SW}write failed ${url}`,
                                     err
                                 );
                             });

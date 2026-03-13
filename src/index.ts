@@ -18,7 +18,6 @@ import { opfsRangeFromNetworkAndCache } from './opfsRangeFromNetworkAndCache.js'
 
 export {
     OPFS_META_FOOTER_LENGTH,
-    OPFS_FOLDER_NAME,
     KILOBYTE,
     MEGABYTE,
     GIGABYTE,
