@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.6 - 2026-03-13
+
+- **Logging:** Removed `[opfs-range]` prefixes from `logger.error` and `logger.warn` messages (both SW and client). Prefixes are kept only for debug/info diagnostics; public API and behavior are unchanged.
+
 ## 4.0.5 - 2026-03-13
 
 - Version bump.
