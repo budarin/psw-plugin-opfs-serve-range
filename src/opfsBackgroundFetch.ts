@@ -123,6 +123,16 @@ export interface OpfsBackgroundFetchOptions {
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
+    /**
+     * Заголовки для event.updateUI при fail/abort. По умолчанию — русские фразы.
+     * Пустая строка отключает вызов updateUI для соответствующего события.
+     */
+    messages?: {
+        /** Заголовок при backgroundfetchfail (по умолчанию «Ошибка при загрузке»). */
+        fetchFailed?: string;
+        /** Заголовок при backgroundfetchabort (по умолчанию «Загрузка отменена»). */
+        fetchAborted?: string;
+    };
 }
 
 /**
@@ -138,7 +148,9 @@ export function opfsBackgroundFetch(
         return undefined;
     }
     const baseOrigin = typeof self !== 'undefined' ? self.origin : '';
-    const { folderName, order = 0, include, exclude, debug = false, pinned, logger = console } = options;
+    const { folderName, order = 0, include, exclude, debug = false, pinned, messages, logger = console } = options;
+    const titleFetchFailed = messages?.fetchFailed ?? 'Ошибка при загрузке';
+    const titleFetchAborted = messages?.fetchAborted ?? 'Загрузка отменена';
     if (include == null || !Array.isArray(include) || include.length === 0) {
         throw new Error('opfs: include is required and must be a non-empty array');
     }
@@ -277,9 +289,9 @@ export function opfsBackgroundFetch(
             logger.warn(
                 `${OPFS_RANGE_LOG_SW}background fetch failed, id=${event.registration.id}`
             );
-            if (typeof event.updateUI === 'function') {
+            if (typeof event.updateUI === 'function' && titleFetchFailed !== '') {
                 await event.updateUI({
-                    title: 'Ошибка при загрузке',
+                    title: titleFetchFailed,
                 });
             }
         },
@@ -297,9 +309,9 @@ export function opfsBackgroundFetch(
                     `${OPFS_RANGE_LOG_SW}background fetch aborted, id=${event.registration.id}`
                 );
             }
-            if (typeof event.updateUI === 'function') {
+            if (typeof event.updateUI === 'function' && titleFetchAborted !== '') {
                 await event.updateUI({
-                    title: 'Загрузка отменена',
+                    title: titleFetchAborted,
                 });
             }
         },
