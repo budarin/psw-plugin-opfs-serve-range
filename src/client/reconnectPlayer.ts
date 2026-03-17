@@ -32,7 +32,8 @@ function hasExplicitDimensions(el: HTMLVideoElement): boolean {
  * Для видео при необходимости создаёт wrapper и overlay (canvas) для сохранения кадра при переключении источника.
  */
 async function reconnectMediaElementToCurrentSrcFromOpfs(
-    element: HTMLMediaElement
+    element: HTMLMediaElement,
+    logger?: Logger
 ): Promise<void> {
     const url = element.currentSrc || element.src;
     if (!url) return;
@@ -213,6 +214,15 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
         const onError = (): void => {
             element.removeEventListener('canplay', onCanPlay);
             element.removeEventListener('error', onError);
+            const mediaError = element.error;
+            if (mediaError != null && logger?.error) {
+                logger.error(
+                    '[opfs] reconnectPlayer: video error',
+                    mediaError.code,
+                    mediaError.message,
+                    url
+                );
+            }
             cleanup();
             reject(
                 new Error(
@@ -287,7 +297,7 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
         logger.debug(`${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: reconnecting to ${assetUrl}`);
     }
     try {
-        await reconnectMediaElementToCurrentSrcFromOpfs(element);
+        await reconnectMediaElementToCurrentSrcFromOpfs(element, logger);
     } catch (err) {
         if (debug) {
             logger.warn(

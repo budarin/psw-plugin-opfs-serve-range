@@ -205,12 +205,26 @@ export function getRoot(): Promise<FileSystemDirectoryHandle> {
  * Возвращает корневую папку плагина в OPFS (OPFS_PLUGIN_ROOT_DIR_NAME). Создаётся при отсутствии.
  * Кешируется на время жизни воркера. Все файлы хранятся в ней плоским списком (один каталог).
  */
+const OPFS_INIT_SENTINEL = '.opfs-init';
+
 export async function getPluginRoot(): Promise<FileSystemDirectoryHandle> {
     if (cachedPluginRootPromise === null) {
         const root = await getRoot();
-        const p = root.getDirectoryHandle(OPFS_PLUGIN_ROOT_DIR_NAME, {
-            create: true,
-        });
+        const p = root
+            .getDirectoryHandle(OPFS_PLUGIN_ROOT_DIR_NAME, {
+                create: true,
+            })
+            .then(async (dir) => {
+                try {
+                    await dir.getFileHandle(OPFS_INIT_SENTINEL, {
+                        create: true,
+                    });
+                    await dir.removeEntry(OPFS_INIT_SENTINEL);
+                } catch {
+                    // ignore — материализация опциональна
+                }
+                return dir;
+            });
         p.catch(() => {
             cachedPluginRootPromise = null;
         });
