@@ -141,11 +141,17 @@ export interface CreateOpfsServeAndBackgroundFetchPluginsOptions
 export interface CreateOpfsServeAndNetworkCachePluginsOptions
     extends CreateOpfsServePluginsBaseOptions {}
 
-function scheduleOpfsCacheWarmup(): void {
+function scheduleOpfsCacheWarmup(logger: Logger): void {
     queueMicrotask(() => {
+        logger.debug('[opfs] cache warmup started');
         getFlatStoreDir()
             .then((dir) => ensureCachesPopulated(dir))
-            .catch(() => {});
+            .then(() => {
+                logger.debug('[opfs] cache warmup completed');
+            })
+            .catch((err) => {
+                logger.error('[opfs] cache warmup failed', err);
+            });
     });
 }
 
@@ -161,7 +167,7 @@ export function createOpfsServeAndBackgroundFetchPlugins(
         options.debug === true || options.logCacheEvents === true,
         logger
     );
-    scheduleOpfsCacheWarmup();
+    scheduleOpfsCacheWarmup(logger);
     const { folderName, include, exclude, debug, pinned, order = 0 } =
         options;
     const serve = opfsServeRange(buildServeOptions({ ...options, logger }, order));
@@ -195,7 +201,7 @@ export function createOpfsServeAndNetworkCachePlugins(
         options.debug === true || options.logCacheEvents === true,
         logger
     );
-    scheduleOpfsCacheWarmup();
+    scheduleOpfsCacheWarmup(logger);
     const { folderName, include, exclude, debug, pinned, order = 0 } =
         options;
     const serve = opfsServeRange(buildServeOptions({ ...options, logger }, order));
