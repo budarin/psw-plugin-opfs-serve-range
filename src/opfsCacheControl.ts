@@ -22,6 +22,7 @@ import {
     OPFS_REQUEST_DELETE_FROM_CACHE,
     OPFS_REQUEST_HAS_IN_CACHE,
     OPFS_REQUEST_LIST_CACHED_RESOURCES,
+    OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK,
     OPFS_RESPONSE_CLEAR_CACHE,
     OPFS_RESPONSE_DELETE_FROM_CACHE,
     OPFS_RESPONSE_HAS_IN_CACHE,
@@ -73,6 +74,7 @@ export function opfsCacheControl(): Plugin | undefined {
 
             if (data?.type === OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK) {
                 const pathname = data.pathname;
+                const requestId = data.requestId;
                 const clientId = (source as Client | undefined)?.id;
                 if (
                     typeof pathname === 'string' &&
@@ -80,6 +82,11 @@ export function opfsCacheControl(): Plugin | undefined {
                     typeof clientId === 'string'
                 ) {
                     removeUrlServedFromNetwork(clientId, pathname as Pathname);
+                }
+                if (typeof requestId === 'string') {
+                    sendResponse(source, OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK, {
+                        requestId,
+                    });
                 }
                 return;
             }

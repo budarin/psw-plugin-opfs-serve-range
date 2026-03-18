@@ -7,7 +7,7 @@ import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-servicewo
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
-import type { FolderName } from './types.js';
+import type { FolderName, UrlString } from './types.js';
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     emitDroppedPatternWarnings,
@@ -253,9 +253,15 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
 
             const pathname = new URL(request.url).pathname;
             const url = request.url;
+            const urlForOpfsKey = ((): UrlString => {
+                const u = new URL(request.url);
+                u.search = '';
+                u.hash = '';
+                return u.href as UrlString;
+            })();
             let key: string;
             try {
-                key = await urlToOpfsKey(url);
+                key = await urlToOpfsKey(urlForOpfsKey);
             } catch (err) {
                 logger.error(`hash failed for ${url}`, err);
                 return;

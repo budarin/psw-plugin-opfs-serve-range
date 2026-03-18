@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.7 - 2026-03-18
+
+- **Edge/Chromium reconnect (video/audio):** After Background Fetch completes, reconnecting the player to the same URL (from OPFS) could fail in Edge with `PIPELINE_ERROR_READ` because the browser reuses cached range state per URL and may request the tail first instead of the start. **Fix:** (1) **clearServedFromNetworkForReconnect(pathname)** is now async and waits for SW acknowledgment (OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK with **requestId**; SW replies **OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK**) so the first fetch after reconnect is not served from network. (2) Reconnect uses a **cache-bust URL** (`?opfs_reconnect=<timestamp>`) so the browser treats the resource as new and requests from the start (bytes=0-…). (3) **opfsServeRange** computes the OPFS key from the request URL **without query and hash** (origin + pathname only), so cache-busted URLs find the same file in OPFS. (4) **reconnectPlayerOnFileLoadedIntoOpfs** compares asset URL with element’s current src by **normalized** URL (ignore query/hash) so reconnect still matches after the previous load used a cache-bust param. Same behavior applies to `<audio>` (same media cache/reload issue in Edge).
+- **OPFS plugin root:** **getPluginRoot()** creates a sentinel file (`.opfs-init`) after `getDirectoryHandle(..., { create: true })` and then removes it so the directory is materialized in OPFS (fixes Chrome where the handle was returned but the directory did not exist until first write).
+- **Warmup and reconnect logging:** **scheduleOpfsCacheWarmup** logs debug on start/completion and logs errors on failure. **reconnectMediaElementToCurrentSrcFromOpfs** logs media error (code, message, url) via the passed logger when the video/audio element fires `error`.
+
 ## 4.0.6 - 2026-03-13
 
 - **Logging:** Removed `[opfs-range]` prefixes from `logger.error` and `logger.warn` messages (both SW and client). Prefixes are kept only for debug/info diagnostics; public API and behavior are unchanged.

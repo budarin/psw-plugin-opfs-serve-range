@@ -1,8 +1,9 @@
 /**
  * Переподключение медиа-элемента к тому же URL из OPFS после записи файла (Background Fetch).
+ * Используется cache-bust (?opfs_reconnect=timestamp), чтобы браузер не переиспользовал кэш по URL
+ * и запрашивал начало файла (Edge/Chromium кэшируют по URL без учёта диапазона).
  *
- * Допущения: элемент находится в DOM; для видео используется wrapper/overlay и сохранение стилей —
- * поведение может быть хрупким при сложной вёрстке (вложенные контейнеры, динамическое изменение размеров).
+ * Допущения: элемент в DOM; для видео — wrapper/overlay для сохранения кадра при переключении.
  */
 
 import type { Logger } from '@budarin/pluggable-serviceworker';
@@ -27,10 +28,13 @@ function hasExplicitDimensions(el: HTMLVideoElement): boolean {
     );
 }
 
-/**
- * Перезагружает элемент с текущим src (тот же URL), сохраняя позицию и состояние воспроизведения.
- * Для видео при необходимости создаёт wrapper и overlay (canvas) для сохранения кадра при переключении источника.
- */
+function normalizeUrlForReconnectCompare(url: string): string {
+    const u = new URL(url, typeof location !== 'undefined' ? location.origin : undefined);
+    u.search = '';
+    u.hash = '';
+    return u.href;
+}
+
 async function reconnectMediaElementToCurrentSrcFromOpfs(
     element: HTMLMediaElement,
     logger?: Logger
@@ -151,11 +155,11 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
             wrapper = null;
         }
         if (isVideo) {
-            const video = element as HTMLVideoElement;
+            const videoEl = element as HTMLVideoElement;
             if (weAddedDimensions) {
-                Object.assign(video.style, { width: '', height: '' });
+                Object.assign(videoEl.style, { width: '', height: '' });
             } else {
-                Object.assign(video.style, {
+                Object.assign(videoEl.style, {
                     width: savedVideoWidth,
                     height: savedVideoHeight,
                     maxWidth: savedVideoMaxWidth,
@@ -170,9 +174,11 @@ async function reconnectMediaElementToCurrentSrcFromOpfs(
     };
 
     const pathname = new URL(url).pathname;
-    clearServedFromNetworkForReconnect(pathname);
+    await clearServedFromNetworkForReconnect(pathname);
 
-    element.src = url;
+    const cacheBustedUrl =
+        url + (url.includes('?') ? '&' : '?') + 'opfs_reconnect=' + Date.now();
+    element.src = cacheBustedUrl;
     element.load();
 
     await new Promise<void>((resolve, reject) => {
@@ -274,7 +280,11 @@ export async function reconnectPlayerOnFileLoadedIntoOpfs(
     const origin = location.origin;
     const assetUrl = new URL(asset, origin).href as UrlString;
     const current = element.currentSrc || element.src;
-    if (!current || current !== assetUrl) {
+    if (
+        !current ||
+        normalizeUrlForReconnectCompare(current) !==
+            normalizeUrlForReconnectCompare(assetUrl)
+    ) {
         if (debug) {
             logger.debug(
                 `${OPFS_RANGE_LOG_CLIENT}reconnectPlayer: skip (asset URL !== current src), asset=${assetUrl}, current=${current}`

@@ -9,6 +9,7 @@ import {
     OPFS_REQUEST_DELETE_FROM_CACHE,
     OPFS_REQUEST_HAS_IN_CACHE,
     OPFS_REQUEST_LIST_CACHED_RESOURCES,
+    OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK,
     OPFS_RESPONSE_CLEAR_CACHE,
     OPFS_RESPONSE_DELETE_FROM_CACHE,
     OPFS_RESPONSE_HAS_IN_CACHE,
@@ -23,6 +24,7 @@ export interface OpfsCachedResource {
 }
 
 const CACHE_CONTROL_REQUEST_TIMEOUT_MS = 2000;
+const CLEAR_SERVED_FROM_NETWORK_TIMEOUT_MS = 500;
 
 /**
  * Отправляет запрос плагину opfsCacheControl и ждёт ответ с тем же requestId.
@@ -130,21 +132,40 @@ export async function deleteFromOpfsCache(url: UrlString): Promise<void> {
  * Сбрасывает для текущей вкладки учёт «URL отдан из сети» по pathname.
  * Вызывать перед element.load() при переподключении плеера к тому же URL (reconnect),
  * чтобы следующие запросы по этому URL обслуживались из OPFS, если файл в кэше.
- * Fire-and-forget: ответ от SW не ожидается.
+ * Возвращает Promise, который резолвится после обработки CLEAR в SW (или по таймауту).
  */
-export function clearServedFromNetworkForReconnect(pathname: Pathname): void {
+export function clearServedFromNetworkForReconnect(pathname: Pathname): Promise<void> {
     if (
         typeof navigator === 'undefined' ||
         navigator.serviceWorker?.controller == null
     ) {
-        return;
+        return Promise.resolve();
     }
     if (typeof pathname !== 'string' || pathname.length === 0) {
-        return;
+        return Promise.resolve();
     }
-    navigator.serviceWorker.controller.postMessage({
-        type: OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
-        pathname,
+    const controller = navigator.serviceWorker.controller;
+    const requestId = `opfs-clear-served-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            resolve();
+        }, CLEAR_SERVED_FROM_NETWORK_TIMEOUT_MS);
+        const onMessage = (event: MessageEvent): void => {
+            const data = event.data as Record<string, unknown> | null;
+            if (data?.['type'] !== OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK || data['requestId'] !== requestId) {
+                return;
+            }
+            clearTimeout(timer);
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            resolve();
+        };
+        navigator.serviceWorker.addEventListener('message', onMessage);
+        controller.postMessage({
+            type: OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK,
+            pathname,
+            requestId,
+        });
     });
 }
 
