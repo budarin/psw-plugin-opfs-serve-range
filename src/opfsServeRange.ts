@@ -7,7 +7,7 @@ import type { Logger, Plugin, PluginContext } from '@budarin/pluggable-servicewo
 import { HEADER_RANGE } from '@budarin/http-constants/headers';
 import { MIME_APPLICATION_OCTET_STREAM } from '@budarin/http-constants/mime-types';
 
-import type { FolderName, UrlString } from './types.js';
+import type { FolderName, OpfsKey, UrlString } from './types.js';
 import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     emitDroppedPatternWarnings,
@@ -25,6 +25,7 @@ import { urlToOpfsKey } from './opfsKey.js';
 import { getOrCreateRangeCache, getRangeCache } from './opfsRangeCache.js';
 import {
     getOrCreateMetadataCache,
+    type MetadataCacheImpl,
     type OpfsMetadataCacheEntry,
 } from './opfsMetadataCache.js';
 import type { RangeSpec } from './opfsRangeUtil.js';
@@ -42,6 +43,71 @@ import {
 import { OPFS_RANGE_LOG_SW } from './opfsLog.js';
 
 const HEADER_IF_RANGE = 'If-Range';
+
+/** Параллельные fetch с одним opfsKey до появления записи в metadata cache — одно чтение футера. */
+const metadataFooterInflight = new Map<
+    OpfsKey,
+    Promise<{ meta: OpfsMetadataCacheEntry; file: File }>
+>();
+
+class OpfsMetadataInflightError extends Error {
+    readonly code: 'no_file' | 'read_error' | 'folder_mismatch';
+
+    constructor(code: 'no_file' | 'read_error' | 'folder_mismatch') {
+        super(code);
+        this.name = 'OpfsMetadataInflightError';
+        this.code = code;
+    }
+}
+
+function startMetadataFooterInflight(
+    metadataCache: MetadataCacheImpl,
+    dir: FileSystemDirectoryHandle,
+    key: OpfsKey,
+    folderName: FolderName
+): Promise<{ meta: OpfsMetadataCacheEntry; file: File }> {
+    const p = (async () => {
+        try {
+            let fileHandle: FileSystemFileHandle;
+            try {
+                fileHandle = await dir.getFileHandle(key);
+            } catch {
+                throw new OpfsMetadataInflightError('no_file');
+            }
+            let file: File;
+            let footer: Awaited<ReturnType<typeof readFooter>>;
+            try {
+                file = await fileHandle.getFile();
+                footer = await readFooter(file);
+            } catch {
+                throw new OpfsMetadataInflightError('read_error');
+            }
+            const { metadata, bodySize } = footer;
+            if (metadata?.folderName !== folderName) {
+                throw new OpfsMetadataInflightError('folder_mismatch');
+            }
+            const size = metadata?.size ?? bodySize;
+            const meta: OpfsMetadataCacheEntry = {
+                fullSize: size,
+                type: metadata?.type ?? MIME_APPLICATION_OCTET_STREAM,
+                folderName: metadata?.folderName,
+                url: metadata?.url,
+                ...(metadata?.etag && { etag: metadata.etag }),
+                ...(metadata?.lastModified && {
+                    lastModified: metadata.lastModified,
+                }),
+                ...(metadata?.evictable !== undefined && {
+                    evictable: metadata.evictable,
+                }),
+            };
+            metadataCache.set(key, meta);
+            return { meta, file };
+        } finally {
+            metadataFooterInflight.delete(key);
+        }
+    })();
+    return p;
+}
 
 export interface OpfsServeRangeOptions {
     /**
@@ -290,55 +356,48 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             let file: File | undefined;
 
             if (cachedMeta === undefined) {
-                let fileHandle: FileSystemFileHandle;
-                try {
-                    fileHandle = await dir.getFileHandle(key);
-                } catch {
-                    await invalidateCachesForFileKeyOnError(dir, folderName, key);
-                    addUrlServedFromNetwork(event.clientId, pathname);
-                    if (debug) {
-                        logger.debug(`${OPFS_RANGE_LOG_SW}no file in OPFS for ${url}`);
-                    }
-                    return;
+                let inflight = metadataFooterInflight.get(key);
+                if (inflight === undefined) {
+                    inflight = startMetadataFooterInflight(
+                        metadataCache,
+                        dir,
+                        key,
+                        folderName
+                    );
+                    metadataFooterInflight.set(key, inflight);
                 }
-                let footer: Awaited<ReturnType<typeof readFooter>>;
                 try {
-                    file = await fileHandle.getFile();
-                    footer = await readFooter(file);
-                } catch {
-                    await invalidateCachesForFileKeyOnError(dir, folderName, key);
-                    addUrlServedFromNetwork(event.clientId, pathname);
-                    if (debug) {
-                        logger.debug(`${OPFS_RANGE_LOG_SW}file read error for ${url}`);
-                    }
-                    return;
-                }
-                const { metadata, bodySize } = footer;
-                if (metadata?.folderName !== folderName) {
-                    addUrlServedFromNetwork(event.clientId, pathname);
-                    if (debug) {
-                        logger.debug(
-                            `${OPFS_RANGE_LOG_SW}file in OPFS but folderName mismatch for ${url}`
+                    const loaded = await inflight;
+                    cachedMeta = loaded.meta;
+                    file = loaded.file;
+                } catch (err) {
+                    if (err instanceof OpfsMetadataInflightError) {
+                        if (err.code === 'folder_mismatch') {
+                            addUrlServedFromNetwork(event.clientId, pathname);
+                            if (debug) {
+                                logger.debug(
+                                    `${OPFS_RANGE_LOG_SW}file in OPFS but folderName mismatch for ${url}`
+                                );
+                            }
+                            return;
+                        }
+                        await invalidateCachesForFileKeyOnError(
+                            dir,
+                            folderName,
+                            key
                         );
+                        addUrlServedFromNetwork(event.clientId, pathname);
+                        if (debug) {
+                            logger.debug(
+                                err.code === 'no_file'
+                                    ? `${OPFS_RANGE_LOG_SW}no file in OPFS for ${url}`
+                                    : `${OPFS_RANGE_LOG_SW}file read error for ${url}`
+                            );
+                        }
+                        return;
                     }
-                    return;
+                    throw err;
                 }
-                const size = metadata?.size ?? bodySize;
-                const meta: OpfsMetadataCacheEntry = {
-                    fullSize: size,
-                    type: metadata?.type ?? MIME_APPLICATION_OCTET_STREAM,
-                    folderName: metadata?.folderName,
-                    url: metadata?.url,
-                    ...(metadata?.etag && { etag: metadata.etag }),
-                    ...(metadata?.lastModified && {
-                        lastModified: metadata.lastModified,
-                    }),
-                    ...(metadata?.evictable !== undefined && {
-                        evictable: metadata.evictable,
-                    }),
-                };
-                metadataCache.set(key, meta);
-                cachedMeta = meta;
             }
 
             const meta = cachedMeta;
@@ -413,6 +472,44 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
                     if (file === undefined) {
                         const fileHandle = await dir.getFileHandle(key);
                         file = await fileHandle.getFile();
+                    }
+                    const rangeByteLength = range.end - range.start + 1;
+                    if (
+                        rangeCacheLimits !== null &&
+                        rangeByteLength > rangeCacheLimits.maxSizeBytes
+                    ) {
+                        const rangeStream = createFileRangeStream(file, range);
+                        const response = build206ResponseFromStream(
+                            rangeStream,
+                            range,
+                            size,
+                            {
+                                type,
+                                ...(meta.etag && { etag: meta.etag }),
+                                ...(meta.lastModified && {
+                                    lastModified: meta.lastModified,
+                                }),
+                                ...(rangeResponseCacheControl && {
+                                    cacheControl: rangeResponseCacheControl,
+                                }),
+                            }
+                        );
+                        if (meta.evictable !== false && event.waitUntil) {
+                            event.waitUntil(
+                                updateEvictionIndexLastAccessed(
+                                    dir,
+                                    folderName,
+                                    key,
+                                    Date.now()
+                                )
+                            );
+                        }
+                        if (debug) {
+                            logger.debug(
+                                `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end} (stream, range length ${String(rangeByteLength)} > rangeCache maxSizeBytes)`
+                            );
+                        }
+                        return response;
                     }
                     const blob = file.slice(range.start, range.end + 1);
                     rangeCache.set(key, range.start, range.end, blob);
