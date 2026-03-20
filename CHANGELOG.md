@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.1 - 2026-03-20
+
+- **Feature:** Added `loadOnlyOnWiFi` option to `opfsRangeFromNetworkAndCache` to control whether the background full `GET` is started after the first `Range` request (`206`). Background full `GET` is skipped when `navigator.connection.type === 'cellular'` and (`navigator.connection.saveData === true` or `loadOnlyOnWiFi === true`); otherwise it may start (best effort when `type` is unknown).
+
 ## 5.0.0 - 2026-03-20
 
 - **Breaking:** Removed the **in-memory range cache** from **opfsServeRange** (options `rangeCache`, `rangeCacheMaxSizeBytes`, `rangeCacheMaxEntries` and all related behavior). Range responses are always built with **createFileRangeStream** + **build206ResponseFromStream** (chunked read from OPFS).

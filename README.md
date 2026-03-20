@@ -51,7 +51,7 @@ Example with **separate caches** for video and audio (two plugins per folder):
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
+import { createOpfsServeAndBackgroundFetchPlugins, createOpfsServeAndNetworkCachePlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
@@ -59,16 +59,17 @@ initServiceWorker(
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndNetworkCachePlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
+            loadOnlyOnWiFi: true,
         }),
     ],
     { version: '1.0.0' }
 );
 ```
 
-Plugins that use the **same** cache (same folder) must use the same **folderName** and consistent options. On the page, use `startDownloadAssetsToOpfs({ folderName, assets, title })` to start a download; when it finishes, those URLs are served from cache. See [Download for offline](#download-for-offline-background-fetch) for the client API
+Plugins that use the **same** cache (same folder) must use the same **folderName** and consistent options. **Important:** in the “cache on first request” scenario after the first `Range` request returns `206`, a background full `GET` to OPFS is started; exactly this fetch may be skipped on `cellular` (respects `saveData` and `loadOnlyOnWiFi`). In the example it is enabled via `loadOnlyOnWiFi: true` for `audio-cache`. For the cache filled via Background Fetch (in `video-cache`), the page calls `startDownloadAssetsToOpfs({ folderName, assets, title })`; after completion those URLs are served from cache.
 
 ## Usage scenarios
 
@@ -189,6 +190,7 @@ createOpfsServeAndNetworkCachePlugins(options: {
   debug?: boolean;   // default: false
   logger?: Logger;
   pinned?: string[];
+  loadOnlyOnWiFi?: boolean;
   rangeResponseCacheControl?: string;
 }): Plugin[]
 ```
@@ -244,6 +246,7 @@ opfsRangeFromNetworkAndCache(options: {
   debug?: boolean;   // default: false
   logger?: Logger;
   pinned?: string[];
+  loadOnlyOnWiFi?: boolean;
 }): Plugin | undefined
 ```
 

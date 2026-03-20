@@ -69,6 +69,30 @@ export interface OpfsRangeFromNetworkAndCacheOptions {
      * Glob-паттерны URL, которые нельзя эвиктить (pinned). По умолчанию все ресурсы эвиктабельны.
      */
     pinned?: string[];
+
+    /**
+     * Если true — фоновой full GET в OPFS запускается только при не-мобильной сети.
+     *
+     * Точная политика для стартa background full GET:
+     * - если `navigator.connection.type === 'cellular'` и `navigator.connection.saveData === true` — не стартовать;
+     * - если `navigator.connection.type === 'cellular'` и `loadOnlyOnWiFi === true` — не стартовать;
+     * - во всех остальных случаях — стартовать (в т.ч. если `type` неизвестен/unknown).
+     */
+    loadOnlyOnWiFi?: boolean;
+}
+
+function getConnectionInfoForBackgroundFetch(): {
+    isCellular: boolean;
+    saveData: boolean;
+} {
+    const nav: any = (globalThis as any).navigator;
+    const connection: any = nav?.connection;
+    const type: string | undefined = connection?.type;
+    const saveData: boolean = connection?.saveData === true;
+    return {
+        isCellular: type === 'cellular',
+        saveData,
+    };
 }
 
 /**
@@ -153,6 +177,7 @@ export function opfsRangeFromNetworkAndCache(
         exclude,
         debug = false,
         pinned,
+        loadOnlyOnWiFi,
         logger = console,
     } = options;
     if (include == null || !Array.isArray(include) || include.length === 0) {
@@ -277,11 +302,37 @@ export function opfsRangeFromNetworkAndCache(
                 }
 
                 if (response.status === 206) {
-                    if (!loadingUrls.has(url)) {
+                    const { isCellular, saveData } =
+                        getConnectionInfoForBackgroundFetch();
+                    const shouldSkipBackgroundFullFetch =
+                        isCellular && (saveData === true || loadOnlyOnWiFi === true);
+
+                    if (!shouldSkipBackgroundFullFetch && !loadingUrls.has(url)) {
                         loadingUrls.add(url);
                         activeRangeCacheFetchCount += 1;
                         notifyClients(OPFS_MSG_RANGE_CACHE_FETCH_STARTED, { url });
-                        backgroundFullFetchToOpfs(url, folderName, logger, debug, context.fetchPassthrough, normalizedPinned);
+                        backgroundFullFetchToOpfs(
+                            url,
+                            folderName,
+                            logger,
+                            debug,
+                            context.fetchPassthrough,
+                            normalizedPinned
+                        );
+                    } else if (debug) {
+                        const reasonParts: string[] = [];
+                        if (isCellular) {
+                            if (saveData) {
+                                reasonParts.push('saveData=true');
+                            }
+                            if (loadOnlyOnWiFi) {
+                                reasonParts.push('loadOnlyOnWiFi=true');
+                            }
+                        }
+                        const reason = reasonParts.length > 0 ? ` (${reasonParts.join(', ')})` : '';
+                        logger.debug(
+                            `${OPFS_RANGE_LOG_SW}skip background full GET ${url} due to connection policy${reason}`
+                        );
                     }
                     return new Response(response.body, {
                         status: response.status,

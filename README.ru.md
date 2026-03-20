@@ -43,7 +43,7 @@ pnpm add @budarin/psw-plugin-opfs-serve-range
 
 ```typescript
 import { initServiceWorker } from '@budarin/pluggable-serviceworker';
-import { createOpfsServeAndBackgroundFetchPlugins } from '@budarin/psw-plugin-opfs-serve-range';
+import { createOpfsServeAndBackgroundFetchPlugins, createOpfsServeAndNetworkCachePlugins } from '@budarin/psw-plugin-opfs-serve-range';
 
 initServiceWorker(
     [
@@ -51,16 +51,18 @@ initServiceWorker(
             folderName: 'video-cache',
             include: ['*.mp4', '*.webm'],
         }),
-        createOpfsServeAndBackgroundFetchPlugins({
+        createOpfsServeAndNetworkCachePlugins({
             folderName: 'audio-cache',
             include: ['*.mp3', '*.m4a'],
+            loadOnlyOnWiFi: true,
         }),
     ],
     { version: '1.0.0' }
 );
 ```
 
-Плагины, которые используют **один и тот же** кеш (одну папку), должны иметь один и тот же **folderName** и согласованные опции. На странице вызывают `startDownloadAssetsToOpfs({ folderName, assets, title })` для запуска загрузки; по завершении эти URL обслуживаются из кеша. Подробнее — в разделе [«Скачать для офлайна»](#скачать-для-офлайна-background-fetch).
+Плагины, которые используют **один и тот же** кеш (одну папку), должны иметь один и тот же **folderName** и согласованные опции. **Важно:** в сценарии «кеш при первом запросе» после первого `Range` (206) запускается фоновый full GET в OPFS; именно он и может быть пропущен на `cellular` (учитывает `saveData` и `loadOnlyOnWiFi`). В примере `audio-cache` это включено через `loadOnlyOnWiFi: true`. Для кеша, заполняемого через Background Fetch (в примере `video-cache`), на странице вызывают `startDownloadAssetsToOpfs({ folderName, assets, title })`; по завершении эти URL обслуживаются из кеша.
+Подробнее — в разделе [«Скачать для офлайна»](#скачать-для-офлайна-background-fetch).
 
 ---
 
@@ -185,6 +187,7 @@ createOpfsServeAndNetworkCachePlugins(options: {
   debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
+  loadOnlyOnWiFi?: boolean;
   rangeResponseCacheControl?: string;
 }): Plugin[]
 ```
@@ -240,6 +243,7 @@ opfsRangeFromNetworkAndCache(options: {
   debug?: boolean;   // по умолчанию false
   logger?: Logger;
   pinned?: string[];
+  loadOnlyOnWiFi?: boolean;
 }): Plugin | undefined
 ```
 

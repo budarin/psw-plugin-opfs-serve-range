@@ -118,6 +118,16 @@ export interface CreateOpfsServePluginsBaseOptions {
     /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
     order?: number;
     rangeResponseCacheControl?: string;
+
+    /**
+     * Если true — фоновой full GET в OPFS при сценарии «cache on first request» запускается только при не-мобильной сети.
+     *
+     * Политика для стартa background full GET:
+     * - если `navigator.connection.type === 'cellular'` и `navigator.connection.saveData === true` — не стартовать;
+     * - если `navigator.connection.type === 'cellular'` и `loadOnlyOnWiFi === true` — не стартовать;
+     * - во всех остальных случаях — стартовать (в т.ч. если `type` неизвестен/unknown).
+     */
+    loadOnlyOnWiFi?: boolean;
 }
 
 /** Опции для пары плагинов serve + Background Fetch. */
@@ -189,7 +199,7 @@ export function createOpfsServeAndNetworkCachePlugins(
         logger
     );
     scheduleOpfsCacheWarmup(logger);
-    const { folderName, include, exclude, debug, pinned, order = 0 } =
+    const { folderName, include, exclude, debug, pinned, order = 0, loadOnlyOnWiFi } =
         options;
     const serve = opfsServeRange(buildServeOptions({ ...options, logger }, order));
     const networkCache = opfsRangeFromNetworkAndCache({
@@ -199,6 +209,7 @@ export function createOpfsServeAndNetworkCachePlugins(
         ...(exclude !== undefined && { exclude }),
         ...(debug !== undefined && { debug }),
         ...(pinned !== undefined && { pinned }),
+        ...(loadOnlyOnWiFi !== undefined && { loadOnlyOnWiFi }),
         logger,
     });
     const cacheControl = opfsCacheControl();
