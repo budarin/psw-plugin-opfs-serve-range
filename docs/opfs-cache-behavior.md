@@ -17,22 +17,16 @@ The cache limits in the plugins are not about “protecting the disk”; they ar
 
 ## 2. Configuration
 
-**Why folders:** different groups of files need different caching settings (quota share, range cache size, eviction behavior, include patterns, etc.). A **folder** is the name of such a group; each folder has one set of plugin options attached to it.
+**Why folders:** different groups of files need separate logical caches (include patterns, **folderName** stored in file metadata, etc.). A **folder** is the name of such a group.
 
-Each plugin requires **`folderName: string`** in its options. One folder = one cache. When several plugins share the same folder, they must use the same **folderName** and consistent settings; **registerFolderConfig** (called by plugin factories) throws otherwise.
+Each plugin requires **`folderName: string`** in its options. One folder = one registry entry. When several plugins share the same folder, they use the same **folderName**.
 
-**Global limit:** **getGlobalMaxCacheFraction()** returns the cap for the sum of all folders’ effective fractions (default `0.5`). **setGlobalMaxCacheFraction(fraction)** sets it (must be in `(0, 1]`). When the sum of per-folder `maxCacheFraction` values exceeds this cap, each folder’s **effective** fraction is scaled down proportionally so that the sum equals the global limit. No error is thrown; **getMaxCacheFraction(folderName)** returns the effective (possibly scaled) value.
-
-Per-folder settings (in plugin options):
-
-- **`maxCacheFraction`** – requested fraction of the origin quota (0…1) for that folder. Default is `0.5`. The **effective** value may be lower when the total requested across all folders exceeds the global limit (see above).
-- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
-- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
+**Global limit:** **getGlobalMaxCacheFraction()** (default `0.5`) and **setGlobalMaxCacheFraction(fraction)** set the fraction of the origin quota the OPFS cache may use. **getMaxCacheFraction()** (no arguments) returns that global value. The byte limit is computed in **getCacheLimit(estimate)**.
 
 The effective cache limit in bytes is calculated as:
 
 ```text
-limit = min(quota × maxCacheFraction, quota − usage)
+limit = min(quota × getMaxCacheFraction(), quota − usage)
 ```
 
 So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.
@@ -134,15 +128,13 @@ This keeps in-memory caches from serving stale data after a file, folder, or the
 
 The plugins use several in-memory caches to reduce I/O and repeated work. All are per service worker lifetime and are cleared or invalidated when the cache folder is cleared or when entries are evicted.
 
-- **Range cache** (when **rangeCache** is enabled): Per folder. Key: `(opfsKey, start, end)`. Value: the response **blob** only. Metadata (fullSize, type, etag, lastModified) for building the 206 response is taken from the **metadata cache**. LRU eviction by **rangeCacheMaxSizeBytes** and **rangeCacheMaxEntries**. Invalidated when a file is evicted from OPFS (**invalidateForKey**) and when **clearOpfsCache(folderName)** is called. **get()** returns **RangeCacheBlobHit** (`{ blob }`). Exported: **getOrCreateRangeCache**, **getRangeCache**, **RangeCacheBlobHit**, **RangeCacheEntryMeta**.
-
-- **Metadata cache**: Per folder. Key: **opfsKey**. Value: `{ fullSize, type, etag?, lastModified?, evictable? }`. Used so that the file footer is not read on every request for the same file; the first request fills the cache, later requests use it. LRU with a default of 500 entries. When a key is evicted from the metadata cache (LRU), all range cache entries for that key are invalidated (**onEvictKey**). Invalidated when files are evicted (**removeFromEvictionIndex**) and on **clearOpfsCache**. Internal (not exported).
+- **Metadata cache**: Global LRU keyed by **opfsKey**. Value: `{ fullSize, type, etag?, lastModified?, evictable?, folderName? }`. Used so that the file footer is not read on every request for the same file; the first request fills the cache, later requests use it. Default 500 entries. Invalidated when files are evicted (**removeFromEvictionIndex**) and on **clearOpfsCache**. Internal (not exported).
 
 - **Dir cache** (opfsUtil): Key: **folderName**. Value: **FileSystemDirectoryHandle** returned by `root.getDirectoryHandle(folderName)`. **getOpfsDir(root, create, folderName)** returns the cached handle when present; otherwise it calls the API, caches the result, and returns. Cleared in **clearOpfsCache(folderName)** so the handle is not reused after the folder has been removed.
 
 - **Eviction index in-memory** (opfsEvictionIndex): Per folder (by dir.name). Map of key → `{ size, lastAccessed, evictable }`. Populated on first use (e.g. **getEntriesForEviction**, **updateEvictionIndexLastAccessed**); avoids repeated directory scans. The on-disk file **\_eviction_index.json** is written when the index is updated; writes are **throttled** to at most once per 5 seconds, with a deferred flush (setTimeout) so that many rapid updates (e.g. seeking) result in a single write. **lastAccessedUpdateByKey** (used for per-key throttle) is cleared when keys are removed from the index so the map does not grow without bound.
 
-- **Other:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (pattern → RegExp), **skip list** (URLs not to cache again), **loadingUrls** (URLs currently being full-fetched in background), **folderRegistry** (folderName → config). **getRoot()** caches the OPFS root promise.
+- **Other:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (pattern → RegExp), **skip list** (URLs not to cache again), **loadingUrls** (URLs currently being full-fetched in background), **folderRegistry** (registered **folderName** values). **getRoot()** caches the OPFS root promise.
 
 ---
 
@@ -167,18 +159,14 @@ The cache limits in the plugins are not about “protecting the disk”; they ar
 
 ## 2. Configuration
 
-Each plugin requires **`folderName: string`** in its options. One folder = one cache. When several plugins share the same folder, they must use the same **folderName** and consistent settings; **registerFolderConfig** (called by plugin factories) throws otherwise.
+Each plugin requires **`folderName: string`** in its options. One folder = one registry entry. When several plugins share the same folder, they use the same **folderName**.
 
-Per-folder settings (in plugin options):
-
-- **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
-- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
-- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
+**Global limit:** **getGlobalMaxCacheFraction()** (default `0.5`) and **setGlobalMaxCacheFraction(fraction)** set the fraction of the origin quota the OPFS cache may use. **getMaxCacheFraction()** returns that global value. The byte limit is computed in **getCacheLimit(estimate)**.
 
 The effective cache limit in bytes is calculated as:
 
 ```
-limit = min(quota × maxCacheFraction, quota − usage)
+limit = min(quota × getMaxCacheFraction(), quota − usage)
 ```
 
 So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.
@@ -280,15 +268,13 @@ This keeps in-memory caches from serving stale data after a file, folder, or the
 
 The plugins use several in-memory caches to reduce I/O and repeated work. All are per service worker lifetime and are cleared or invalidated when the cache folder is cleared or when entries are evicted.
 
-- **Range cache** (when **rangeCache** is enabled): Per folder. Key: `(opfsKey, start, end)`. Value: the response **blob** only. Metadata (fullSize, type, etag, lastModified) for building the 206 response is taken from the **metadata cache**. LRU eviction by **rangeCacheMaxSizeBytes** and **rangeCacheMaxEntries**. Invalidated when a file is evicted from OPFS (**invalidateForKey**) and when **clearOpfsCache(folderName)** is called. **get()** returns **RangeCacheBlobHit** (`{ blob }`). Exported: **getOrCreateRangeCache**, **getRangeCache**, **RangeCacheBlobHit**, **RangeCacheEntryMeta**.
-
-- **Metadata cache**: Per folder. Key: **opfsKey**. Value: `{ fullSize, type, etag?, lastModified?, evictable? }`. Used so that the file footer is not read on every request for the same file; the first request fills the cache, later requests use it. LRU with a default of 500 entries. When a key is evicted from the metadata cache (LRU), all range cache entries for that key are invalidated (**onEvictKey**). Invalidated when files are evicted (**removeFromEvictionIndex**) and on **clearOpfsCache**. Internal (not exported).
+- **Metadata cache**: Global LRU keyed by **opfsKey**. Value: `{ fullSize, type, etag?, lastModified?, evictable?, folderName? }`. Used so that the file footer is not read on every request for the same file; the first request fills the cache, later requests use it. Default 500 entries. Invalidated when files are evicted (**removeFromEvictionIndex**) and on **clearOpfsCache**. Internal (not exported).
 
 - **Dir cache** (opfsUtil): Key: **folderName**. Value: **FileSystemDirectoryHandle** returned by `root.getDirectoryHandle(folderName)`. **getOpfsDir(root, create, folderName)** returns the cached handle when present; otherwise it calls the API, caches the result, and returns. Cleared in **clearOpfsCache(folderName)** so the handle is not reused after the folder has been removed.
 
 - **Eviction index in-memory** (opfsEvictionIndex): Per folder (by dir.name). Map of key → `{ size, lastAccessed, evictable }`. Populated on first use (e.g. **getEntriesForEviction**, **updateEvictionIndexLastAccessed**); avoids repeated directory scans. The on-disk file **\_eviction_index.json** is written when the index is updated; writes are **throttled** to at most once per 5 seconds, with a deferred flush (setTimeout) so that many rapid updates (e.g. seeking) result in a single write. **lastAccessedUpdateByKey** (used for per-key throttle) is cleared when keys are removed from the index so the map does not grow without bound.
 
-- **Other:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (pattern → RegExp), **skip list** (URLs not to cache again), **loadingUrls** (URLs currently being full-fetched in background), **folderRegistry** (folderName → config). **getRoot()** caches the OPFS root promise.
+- **Other:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (pattern → RegExp), **skip list** (URLs not to cache again), **loadingUrls** (URLs currently being full-fetched in background), **folderRegistry** (registered **folderName** values). **getRoot()** caches the OPFS root promise.
 
 ---
 
@@ -313,18 +299,14 @@ The cache limits in the plugins are not about “protecting the disk”; they ar
 
 ## 2. Configuration
 
-Each plugin requires **`folderName: string`** in its options. One folder = one cache. When several plugins share the same folder, they must use the same **folderName** and consistent settings; **registerFolderConfig** (called by plugin factories) throws otherwise.
+Each plugin requires **`folderName: string`** in its options. One folder = one registry entry. When several plugins share the same folder, they use the same **folderName**.
 
-Per-folder settings (in plugin options):
-
-- **`maxCacheFraction`** – fraction of the origin quota (0…1) that the cache is allowed to occupy. Default is `0.5` (50%).
-- **`rangeCacheMaxSizeBytes`** – max total size in bytes for the in-memory range response cache used by **opfsServeRange** when **rangeCache** is enabled. Default is 5 MB.
-- **`rangeCacheMaxEntries`** – max number of entries in that in-memory range cache. Default is 300.
+**Global limit:** **getGlobalMaxCacheFraction()** (default `0.5`) and **setGlobalMaxCacheFraction(fraction)** set the fraction of the origin quota the OPFS cache may use. **getMaxCacheFraction()** returns that global value. The byte limit is computed in **getCacheLimit(estimate)**.
 
 The effective cache limit in bytes is calculated as:
 
 ```
-limit = min(quota × maxCacheFraction, quota − usage)
+limit = min(quota × getMaxCacheFraction(), quota − usage)
 ```
 
 So the cache can never exceed either the configured fraction of the quota or the currently available free space. `quota` and `usage` are taken from `navigator.storage.estimate()`.

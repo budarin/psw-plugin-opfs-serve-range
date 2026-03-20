@@ -5,7 +5,6 @@ import {
     setGlobalMaxCacheFraction,
     getMaxCacheFraction,
     normalizePatternList,
-    registerFolderConfig,
     resetFolderRegistryForTests,
     shouldProcessFile,
 } from '../src/opfsUtil.ts';

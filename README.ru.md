@@ -173,9 +173,6 @@ createOpfsServeAndBackgroundFetchPlugins(options: {
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
 
@@ -189,15 +186,12 @@ createOpfsServeAndNetworkCachePlugins(options: {
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
 
 Фабрика возвращает массив плагинов. **initServiceWorker** (pluggable-serviceworker) разворачивает вложенные массивы плагинов, поэтому результат можно передавать без спреда.
 
-У каждого плагина в опциях обязательны **folderName: string** и **include: string[]** (непустой массив). Одна папка = один кеш. **include** и **exclude** могут быть glob-паттернами, pathname'ами или полными URL (например `['*.mp4', '/video/*']`, `['/assets/video.mp4']` или `['https://example.com/video/*']`). При инициализации полные URL приводятся к pathname (same-origin) или отбрасываются (cross-origin). Если после нормализации `include` оказался пустым (например в `include` были только cross-origin URL), фабрика возвращает `undefined` и плагин не создаётся. **Когда приходит запрос:** если URL запроса с другого origin — запрос не обрабатывается (ни отдача из кеша, ни запись). Если same-origin — по pathname URL запроса сопоставляем с (нормализованными) паттернами: например глоб `/video/*` совпадает с запросом на `https://example.com/video/1.mp4`. Плагины, которые обслуживают один и тот же кеш (например opfsServeRange + opfsBackgroundFetch или opfsServeRange + opfsRangeFromNetworkAndCache для сценария «кеш при первом запросе»), должны использовать один и тот же **folderName** и согласованные настройки (rangeCacheMaxSizeBytes/rangeCacheMaxEntries при необходимости); иначе **registerFolderConfig** (вызывается фабриками плагинов) выбросит ошибку. Настройки по умолчанию для папки: rangeCacheMaxSizeBytes 5 МБ, rangeCacheMaxEntries 300. Очистить кеш: **clearOpfsCache(folderName)**.
+У каждого плагина в опциях обязательны **folderName: string** и **include: string[]** (непустой массив). Одна папка = один кеш. **include** и **exclude** могут быть glob-паттернами, pathname'ами или полными URL (например `['*.mp4', '/video/*']`, `['/assets/video.mp4']` или `['https://example.com/video/*']`). При инициализации полные URL приводятся к pathname (same-origin) или отбрасываются (cross-origin). Если после нормализации `include` оказался пустым (например в `include` были только cross-origin URL), фабрика возвращает `undefined` и плагин не создаётся. **Когда приходит запрос:** если URL запроса с другого origin — запрос не обрабатывается (ни отдача из кеша, ни запись). Если same-origin — по pathname URL запроса сопоставляем с (нормализованными) паттернами: например глоб `/video/*` совпадает с запросом на `https://example.com/video/1.mp4`. Плагины, которые обслуживают один и тот же кеш (например opfsServeRange + opfsBackgroundFetch или opfsServeRange + opfsRangeFromNetworkAndCache для сценария «кеш при первом запросе»), должны использовать один и тот же **folderName**. Очистить кеш: **clearOpfsCache(folderName)**.
 
 **Плоское хранилище (flat store):** все файлы лежат в одном каталоге; **folderName** хранится только в метаданных файла и используется для фильтрации (отдача, list, clear). Размер кеша ограничен **одной глобальной долей** квоты origin: **getGlobalMaxCacheFraction()** (по умолчанию 0.5) и **setGlobalMaxCacheFraction(fraction)** задают лимит; **getMaxCacheFraction()** (без аргументов) возвращает его. Задайте лимит до регистрации плагинов; не задавайте 1.0, если приложение использует и другие хранилища (Cache API, IndexedDB и т.д.).
 
@@ -212,27 +206,16 @@ getRoot(): Promise<FileSystemDirectoryHandle>
 getFlatStoreDir(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 clearOpfsCache(folderName: string): Promise<void>
-registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
+registerFolderConfig(folderName: string): void
 getGlobalMaxCacheFraction(): number
 setGlobalMaxCacheFraction(fraction: number): void
 getMaxCacheFraction(): number
 getCacheLimit(estimate: StorageEstimate): number
-getRangeCacheMaxSizeBytes(folderName: string): number
-getRangeCacheMaxEntries(folderName: string): number
 ```
 
 При инициализации полные URL приводятся к pathname; cross-origin и невалидные попадают в `dropped`. Фабрики плагинов выводят предупреждения через logger. **getGlobalMaxCacheFraction** по умолчанию 0.5; **setGlobalMaxCacheFraction** ожидает (0, 1], при неверном значении — throw.
 
-**FolderCacheConfig** (для `registerFolderConfig`): только лимиты range-кеша (доли квоты по папкам нет).
-
-```ts
-interface FolderCacheConfig {
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
-}
-```
-
-**opfsServeRange** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов (206).
+**opfsServeRange** — читает файлы из OPFS и отдаёт запрошенные диапазоны байтов (206), потоково по чанкам из файла.
 
 ```ts
 opfsServeRange(options: {
@@ -243,9 +226,6 @@ opfsServeRange(options: {
   debug?: boolean;   // по умолчанию false
   logger?: Logger;
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin | undefined
 ```
 

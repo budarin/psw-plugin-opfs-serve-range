@@ -169,7 +169,7 @@ export function opfsBackgroundFetch(
     };
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
-    registerFolderConfig(folderName, {});
+    registerFolderConfig(folderName);
 
     const filterPlugin = opfsBackgroundFetchFilter({
         include: normalizedInclude,

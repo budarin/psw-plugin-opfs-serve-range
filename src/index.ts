@@ -43,20 +43,10 @@ export {
     getMaxCacheFraction,
     getGlobalMaxCacheFraction,
     setGlobalMaxCacheFraction,
-    getRangeCacheMaxSizeBytes,
-    getRangeCacheMaxEntries,
     isEvictable,
     type OpfsConfigOptions,
-    type FolderCacheConfig,
     type NormalizePatternListDropped,
 } from './opfsUtil.js';
-export {
-    getOrCreateRangeCache,
-    getRangeCache,
-    type RangeCacheLimits,
-    type RangeCacheEntryMeta,
-    type RangeCacheBlobHit,
-} from './opfsRangeCache.js';
 export { urlToOpfsKey } from './opfsKey.js';
 export {
     getOpfsBackgroundFetchId,
@@ -128,9 +118,6 @@ export interface CreateOpfsServePluginsBaseOptions {
     /** Порядок пары плагинов: первый получает order (по умолчанию 0), второй — order + 1. */
     order?: number;
     rangeResponseCacheControl?: string;
-    rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
 }
 
 /** Опции для пары плагинов serve + Background Fetch. */

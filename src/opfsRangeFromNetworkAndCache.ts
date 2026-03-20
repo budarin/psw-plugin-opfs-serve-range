@@ -173,7 +173,7 @@ export function opfsRangeFromNetworkAndCache(
     };
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
-    registerFolderConfig(folderName, {});
+    registerFolderConfig(folderName);
 
     return {
         name: 'opfs-range-from-network-and-cache',

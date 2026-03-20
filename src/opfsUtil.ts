@@ -9,12 +9,8 @@ import {
     invalidateCacheForDir,
     removeFromEvictionIndex,
 } from './opfsEvictionIndex.js';
-import { getRangeCache } from './opfsRangeCache.js';
 import { getMetadataCache } from './opfsMetadataCache.js';
 import { logCacheEvent } from './opfsCacheEventLog.js';
-
-const DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
-const DEFAULT_RANGE_CACHE_MAX_ENTRIES = 300;
 
 /** Глобальный лимит: сумма долей всех папок не должна превышать это значение (по умолчанию 0.5). */
 let globalMaxCacheFraction = 0.5;
@@ -38,22 +34,13 @@ export function resetFolderRegistryForTests(): void {
     cachedPluginRootPromise = null;
 }
 
-/** Конфиг кеша для одной папки (лимиты). При повторной регистрации того же folderName должен совпадать. */
-export interface FolderCacheConfig {
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
-}
-
+/** Опции конфигурации (расширяемый тип для потребителей пакета). */
 export interface OpfsConfigOptions {
     /** Доля квоты origin (0…1), которую может занимать кеш. По умолчанию 0.5. */
     maxCacheFraction?: number;
-    /** Макс. суммарный размер in-memory кеша range-ответов (байты). */
-    rangeCacheMaxSizeBytes?: number;
-    /** Макс. количество записей в in-memory кеше range-ответов. */
-    rangeCacheMaxEntries?: number;
 }
 
-const folderRegistry = new Map<string, Required<FolderCacheConfig>>();
+const folderRegistry = new Set<string>();
 
 /**
  * Разбор URL без throw: возвращает URL или null. При наличии URL.parse использует его, иначе try/catch с new URL.
@@ -71,101 +58,15 @@ function parseUrlSafe(url: UrlString, base?: string): URL | null {
     }
 }
 
-function normalizeFolderConfig(config: FolderCacheConfig = {}): Required<FolderCacheConfig> {
-    const vb = config.rangeCacheMaxSizeBytes;
-    const rangeCacheMaxSizeBytes =
-        vb === undefined || vb < 0 ? DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES : vb;
-    const ve = config.rangeCacheMaxEntries;
-    const rangeCacheMaxEntries =
-        ve === undefined || ve < 0 ? DEFAULT_RANGE_CACHE_MAX_ENTRIES : ve;
-    return { rangeCacheMaxSizeBytes, rangeCacheMaxEntries };
-}
-
-function configsEqual(a: Required<FolderCacheConfig>, b: Required<FolderCacheConfig>): boolean {
-    return (
-        a.rangeCacheMaxSizeBytes === b.rangeCacheMaxSizeBytes &&
-        a.rangeCacheMaxEntries === b.rangeCacheMaxEntries
-    );
-}
-
 /**
- * Регистрирует конфиг папки. Вызывается фабриками плагинов при создании.
- * Если папка уже зарегистрирована с другим конфигом — throw.
- * Эффективная доля квоты (для getMaxCacheFraction) при сумме долей выше глобального лимита
- * считается пропорционально: сумма эффективных долей = глобальный лимит.
+ * Регистрирует логическую папку кеша. Вызывается фабриками плагинов при создании.
+ * Повторная регистрация того же имени — no-op.
  */
-export interface NormalizePatternListDropped {
-    crossOrigin: string[];
-    invalid: string[];
-}
-
-/**
- * При инициализации приводит элементы include/exclude/pinned к pathname и отбрасывает сторонние (другой origin).
- * Полные URL с тем же origin заменяются на pathname; с другим origin — в dropped.crossOrigin; невалидные URL — в dropped.invalid.
- * Варнинги по dropped нужно вывести через context.logger при первом вызове обработчика плагина (контракт плагина).
- */
-export function normalizePatternList(
-    patterns: string[] | undefined,
-    baseOrigin: string
-): { list: string[] | undefined; dropped: NormalizePatternListDropped } {
-    const dropped: NormalizePatternListDropped = { crossOrigin: [], invalid: [] };
-    if (patterns == null || patterns.length === 0) return { list: patterns, dropped };
-    if (!baseOrigin) return { list: patterns, dropped };
-    const result: string[] = [];
-    for (const p of patterns) {
-        const s = p.trim();
-        if (!s) continue;
-        if (s.includes('://')) {
-            const u = parseUrlSafe(s);
-            if (u === null) {
-                dropped.invalid.push(s);
-                continue;
-            }
-            if (u.origin !== baseOrigin) {
-                dropped.crossOrigin.push(s);
-                continue;
-            }
-            result.push(u.pathname || '/');
-        } else {
-            result.push(s);
-        }
-    }
-    return { list: result, dropped };
-}
-
-/** Выводит предупреждения по отброшенным паттернам через logger контракта плагина. Очищает dropped после вывода. */
-export function emitDroppedPatternWarnings(
-    dropped: NormalizePatternListDropped,
-    logger: Logger
-): void {
-    for (const s of dropped.crossOrigin) {
-        logger.warn(`dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
-    }
-    for (const s of dropped.invalid) {
-        logger.warn(`dropped invalid URL in include/exclude/pinned: ${s}`);
-    }
-    dropped.crossOrigin.length = 0;
-    dropped.invalid.length = 0;
-}
-
-export function registerFolderConfig(
-    folderName: FolderName,
-    config: FolderCacheConfig = {}
-): void {
+export function registerFolderConfig(folderName: FolderName): void {
     if (typeof folderName !== 'string' || folderName.trim() === '') {
         throw new Error('opfs: folderName is required and must be a non-empty string');
     }
-    const normalized = normalizeFolderConfig(config);
-    const existing = folderRegistry.get(folderName);
-    if (existing !== undefined) {
-        if (!configsEqual(existing, normalized)) {
-            throw new Error(
-                `opfs: folder "${folderName}" is already registered with different cache settings (rangeCacheMaxSizeBytes or rangeCacheMaxEntries)`
-            );
-        }
-        return;
-    }
-    folderRegistry.set(folderName, normalized);
+    folderRegistry.add(folderName.trim());
 }
 
 /**
@@ -253,18 +154,6 @@ export function isOpfsAvailable(): boolean {
 /** Глобальная доля квоты origin (0…1), которую может занимать кеш. Задаётся через setGlobalMaxCacheFraction. */
 export function getMaxCacheFraction(): number {
     return globalMaxCacheFraction;
-}
-
-/** Лимит размера in-memory кеша range-ответов для папки. */
-export function getRangeCacheMaxSizeBytes(folderName: FolderName): number {
-    const c = folderRegistry.get(folderName);
-    return c?.rangeCacheMaxSizeBytes ?? DEFAULT_RANGE_CACHE_MAX_SIZE_BYTES;
-}
-
-/** Лимит количества записей in-memory кеша range-ответов для папки. */
-export function getRangeCacheMaxEntries(folderName: FolderName): number {
-    const c = folderRegistry.get(folderName);
-    return c?.rangeCacheMaxEntries ?? DEFAULT_RANGE_CACHE_MAX_ENTRIES;
 }
 
 const globRegexCache = new Map<string, RegExp>();
@@ -360,7 +249,7 @@ export async function getOpfsDir(
 }
 
 /**
- * Инвалидирует кэши по одному ключу (metadata, range, eviction index).
+ * Инвалидирует кэши по одному ключу (metadata, eviction index).
  * При ошибке (например папка удалена и dir невалиден) эскалирует в полную инвалидацию папки.
  * Вызывать при файловой ошибке чтения (getFileHandle/getFile/футер), чтобы не отдавать устаревшие данные.
  */
@@ -377,12 +266,11 @@ export async function invalidateCachesForFileKeyOnError(
 }
 
 /**
- * Сбрасывает все in-memory кэши для папки (индекс эвикции, metadata, range, хэндл директории).
+ * Сбрасывает все in-memory кэши для папки (индекс эвикции, metadata, хэндл директории).
  * Вызывать после ручного удаления папки в OPFS или при NotFoundError из-за рассинхрона.
  */
 export function invalidateAllCachesForFolder(folderName: FolderName): void {
     invalidateCacheForDir(folderName);
-    getRangeCache(folderName)?.invalidateAll();
     getMetadataCache()?.invalidateEntriesByFolder(folderName);
 }
 
@@ -416,4 +304,58 @@ export async function clearOpfsCache(folderName: FolderName): Promise<void> {
     }
     logCacheEvent(`cache cleared for folder: ${folderName}, ${toDelete.length} files removed`);
     invalidateAllCachesForFolder(folderName);
+}
+
+export interface NormalizePatternListDropped {
+    crossOrigin: string[];
+    invalid: string[];
+}
+
+/**
+ * При инициализации приводит элементы include/exclude/pinned к pathname и отбрасывает сторонние (другой origin).
+ * Полные URL с тем же origin заменяются на pathname; с другим origin — в dropped.crossOrigin; невалидные URL — в dropped.invalid.
+ * Варнинги по dropped нужно вывести через context.logger при первом вызове обработчика плагина (контракт плагина).
+ */
+export function normalizePatternList(
+    patterns: string[] | undefined,
+    baseOrigin: string
+): { list: string[] | undefined; dropped: NormalizePatternListDropped } {
+    const dropped: NormalizePatternListDropped = { crossOrigin: [], invalid: [] };
+    if (patterns == null || patterns.length === 0) return { list: patterns, dropped };
+    if (!baseOrigin) return { list: patterns, dropped };
+    const result: string[] = [];
+    for (const p of patterns) {
+        const s = p.trim();
+        if (!s) continue;
+        if (s.includes('://')) {
+            const u = parseUrlSafe(s);
+            if (u === null) {
+                dropped.invalid.push(s);
+                continue;
+            }
+            if (u.origin !== baseOrigin) {
+                dropped.crossOrigin.push(s);
+                continue;
+            }
+            result.push(u.pathname || '/');
+        } else {
+            result.push(s);
+        }
+    }
+    return { list: result, dropped };
+}
+
+/** Выводит предупреждения по отброшенным паттернам через logger контракта плагина. Очищает dropped после вывода. */
+export function emitDroppedPatternWarnings(
+    dropped: NormalizePatternListDropped,
+    logger: Logger
+): void {
+    for (const s of dropped.crossOrigin) {
+        logger.warn(`dropped cross-origin pattern (use pathnames or same-origin URLs): ${s}`);
+    }
+    for (const s of dropped.invalid) {
+        logger.warn(`dropped invalid URL in include/exclude/pinned: ${s}`);
+    }
+    dropped.crossOrigin.length = 0;
+    dropped.invalid.length = 0;
 }

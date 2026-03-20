@@ -135,8 +135,8 @@ export function createRangeExtractTransform(
 
 /**
  * Собирает ответ 206 Partial Content по срезу Blob и полному размеру.
- * Тело отдаётся потоком (rangeBlob.stream()), чтобы при отмене первого «полного» запроса
- * плеера не держать весь диапазон в буфере.
+ * Тело передаётся как сам Blob (не rangeBlob.stream()): стабильнее в SW/Chromium для
+ * срезов из OPFS и записей in-memory range cache; для небольших диапазонов накладные расходы малы.
  */
 export function build206Response(
     rangeBlob: Blob,
@@ -168,7 +168,7 @@ export function build206Response(
         headers.set(HEADER_LAST_MODIFIED, lastModified);
     }
 
-    return new Response(rangeBlob.stream(), {
+    return new Response(rangeBlob, {
         status: HTTP_STATUS_PARTIAL_CONTENT,
         headers,
     });

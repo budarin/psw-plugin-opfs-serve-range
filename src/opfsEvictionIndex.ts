@@ -8,7 +8,6 @@ import {
     readMetadataFromFileFooter,
     OPFS_META_FOOTER_LENGTH,
 } from './opfsFormat.js';
-import { getRangeCache } from './opfsRangeCache.js';
 import {
     getMetadataCache,
     type OpfsMetadataCacheEntry,
@@ -253,12 +252,12 @@ export async function addToEvictionIndex(
 }
 
 /**
- * Удаляет ключи из in-memory кэша. Инвалидирует metadata cache и range cache для переданных папок.
+ * Удаляет ключи из in-memory кэша. Инвалидирует metadata cache для переданных ключей.
  */
 export async function removeFromEvictionIndex(
     _dir: FileSystemDirectoryHandle,
     keys: OpfsKey[],
-    folderNames: FolderName[]
+    _folderNames: FolderName[]
 ): Promise<void> {
     if (keys.length === 0) return;
     const set = new Set(keys);
@@ -267,14 +266,6 @@ export async function removeFromEvictionIndex(
         pendingFooterWrites.delete(k);
     }
     getMetadataCache()?.invalidateKeys(set);
-    for (const fn of folderNames) {
-        const rangeCache = getRangeCache(fn);
-        if (rangeCache !== null) {
-            for (const key of set) {
-                rangeCache.invalidateForKey(key);
-            }
-        }
-    }
     return runWithLock(async () => {
         for (const k of set) {
             globalEvictionCache.delete(k);

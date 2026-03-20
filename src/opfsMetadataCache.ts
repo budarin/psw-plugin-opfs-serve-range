@@ -23,7 +23,7 @@ const DEFAULT_MAX_ENTRIES = 500;
 
 export interface MetadataCacheLimits {
     maxEntries?: number;
-    /** Вызывается при эвикции ключа из кеша (например, инвалидация range cache для этого ключа). */
+    /** Вызывается при эвикции ключа из кеша (расширение для подписчиков). */
     onEvictKey?: (key: OpfsKey) => void;
 }
 

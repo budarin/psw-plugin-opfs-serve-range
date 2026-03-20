@@ -17,22 +17,16 @@
 
 ## 2. Конфигурация
 
-**Зачем папки:** разным группам файлов нужны разные настройки кэширования (доля квоты, размер range cache, поведение при эвикции, паттерны include и т.д.). **Папка** — это имя такой группы; к одной папке привязан один набор опций плагина.
+**Зачем папки:** разным группам файлов нужны разные логические кеши (паттерны include, **folderName** в метаданных файлов и т.д.). **Папка** — имя такой группы.
 
-У каждого плагина в опциях обязателен **`folderName: string`** — одна папка = один кеш. Если несколько плагинов используют одну папку, они должны указывать один и тот же **folderName** и согласованные настройки; иначе **registerFolderConfig** (вызывается фабриками плагинов) выбросит ошибку.
+У каждого плагина в опциях обязателен **`folderName: string`** — одна папка = одна регистрация в реестре. Если несколько плагинов используют одну папку, они указывают один и тот же **folderName**.
 
-**Глобальный лимит:** **getGlobalMaxCacheFraction()** возвращает верхнюю границу суммы эффективных долей всех папок (по умолчанию `0.5`). **setGlobalMaxCacheFraction(fraction)** задаёт его (значение в интервале `(0, 1]`). Если сумма долей **maxCacheFraction** по папкам превышает этот лимит, эффективная доля каждой папки пропорционально уменьшается так, чтобы сумма равнялась глобальному лимиту. Ошибка не выбрасывается; **getMaxCacheFraction(folderName)** возвращает эффективную (возможно уменьшенную) долю.
-
-Настройки для папки (в опциях плагина):
-
-- **`maxCacheFraction`** — запрашиваемая доля квоты origin (0…1) для этой папки. По умолчанию `0.5`. **Эффективная** доля может быть меньше, если сумма долей по всем папкам превышает глобальный лимит (см. выше).
-- **`rangeCacheMaxSizeBytes`** — макс. суммарный размер (байты) in-memory кеша 206-ответов для **opfsServeRange** при включённом **rangeCache**. По умолчанию 5 МБ.
-- **`rangeCacheMaxEntries`** — макс. количество записей в этом кеше. По умолчанию 300.
+**Глобальный лимит:** **getGlobalMaxCacheFraction()** (по умолчанию `0.5`) и **setGlobalMaxCacheFraction(fraction)** задают долю квоты origin, которую может занимать кеш OPFS плагина. **getMaxCacheFraction()** (без аргументов) возвращает эту глобальную долю. Фактический лимит байтов считается в **getCacheLimit(estimate)**.
 
 Фактический лимит кеша в байтах вычисляется так:
 
 ```
-лимит = min(quota × maxCacheFraction, quota − usage)
+лимит = min(quota × getMaxCacheFraction(), quota − usage)
 ```
 
 То есть кеш не может быть больше ни доли квоты, ни текущего свободного места. `quota` и `usage` берутся из `navigator.storage.estimate()`.
@@ -134,15 +128,13 @@
 
 Плагины используют несколько in-memory кешей, чтобы снизить I/O и повторную работу. Все живут в рамках жизни сервис-воркера и сбрасываются или инвалидируются при очистке папки кеша или при эвикции записей.
 
-- **Range cache** (при включённом **rangeCache**): на папку. Ключ: `(opfsKey, start, end)`. Значение: только **blob** ответа. Метаданные (fullSize, type, etag, lastModified) для сборки 206 берутся из **metadata cache**. LRU по **rangeCacheMaxSizeBytes** и **rangeCacheMaxEntries**. Инвалидация при эвикции файла из OPFS (**invalidateForKey**) и при **clearOpfsCache(folderName)**. **get()** возвращает **RangeCacheBlobHit** (`{ blob }`). Экспорт: **getOrCreateRangeCache**, **getRangeCache**, **RangeCacheBlobHit**, **RangeCacheEntryMeta**.
-
-- **Metadata cache**: на папку. Ключ: **opfsKey**. Значение: `{ fullSize, type, etag?, lastModified?, evictable? }`. Нужен, чтобы не читать футер файла при каждом запросе того же файла; первый запрос заполняет кеш, последующие используют его. LRU, по умолчанию 500 записей. При эвикции ключа из metadata cache все записи range cache по этому ключу инвалидируются (**onEvictKey**). Инвалидация при эвикции файлов (**removeFromEvictionIndex**) и при **clearOpfsCache**. Внутренний (не экспортируется).
+- **Metadata cache**: глобальный LRU по **opfsKey**. Значение: `{ fullSize, type, etag?, lastModified?, evictable?, folderName? }`. Нужен, чтобы не читать футер файла при каждом запросе того же файла; первый запрос заполняет кеш, последующие используют его. По умолчанию 500 записей. Инвалидация при эвикции файлов (**removeFromEvictionIndex**) и при **clearOpfsCache**. Внутренний (не экспортируется).
 
 - **Dir cache** (opfsUtil): ключ **folderName**, значение **FileSystemDirectoryHandle** из `root.getDirectoryHandle(folderName)`. **getOpfsDir(root, create, folderName)** возвращает закешированный handle при наличии; иначе вызывает API, кеширует и возвращает. Сбрасывается в **clearOpfsCache(folderName)**, чтобы не использовать handle после удаления папки.
 
 - **Eviction index in-memory** (opfsEvictionIndex): на папку (по dir.name). Map ключ → `{ size, lastAccessed, evictable }`. Заполняется при первом обращении (например **getEntriesForEviction**, **updateEvictionIndexLastAccessed**); избегает повторных сканирований каталога. Файл на диске **\_eviction_index.json** пишется при обновлении индекса; запись **троттлится** не чаще раза в 5 секунд, с отложенным flush (setTimeout), чтобы при частых обновлениях (например перемотка) выполнялась одна запись. **lastAccessedUpdateByKey** (троттлинг по ключу) очищается при удалении ключей из индекса, чтобы Map не рос без ограничений.
 
-- **Прочее:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (паттерн → RegExp), **skip list** (URL, которые не кешируем повторно), **loadingUrls** (URL фоновой полной загрузки), **folderRegistry** (folderName → config). **getRoot()** кеширует корень OPFS.
+- **Прочее:** **urlToKeyCache** (URL → opfsKey), **globRegexCache** (паттерн → RegExp), **skip list** (URL, которые не кешируем повторно), **loadingUrls** (URL фоновой полной загрузки), **folderRegistry** (зарегистрированные **folderName**). **getRoot()** кеширует корень OPFS.
 
 ---
 

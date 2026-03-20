@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.0.0 - 2026-03-20
+
+- **Breaking:** Removed the **in-memory range cache** from **opfsServeRange** (options `rangeCache`, `rangeCacheMaxSizeBytes`, `rangeCacheMaxEntries` and all related behavior). Range responses are always built with **createFileRangeStream** + **build206ResponseFromStream** (chunked read from OPFS).
+- **Removed:** Module **opfsRangeCache.ts** and exports **getOrCreateRangeCache**, **getRangeCache**, **RangeCacheLimits**, **RangeCacheEntryMeta**, **RangeCacheBlobHit**; **getRangeCacheMaxSizeBytes**, **getRangeCacheMaxEntries**; type **FolderCacheConfig**.
+- **registerFolderConfig** now takes only **folderName** (duplicate registration is a no-op). **OpfsConfigOptions** no longer includes range-cache fields.
+
 ## 4.0.7 - 2026-03-18
 
 - **Edge/Chromium reconnect (video/audio):** After Background Fetch completes, reconnecting the player to the same URL (from OPFS) could fail in Edge with `PIPELINE_ERROR_READ` because the browser reuses cached range state per URL and may request the tail first instead of the start. **Fix:** (1) **clearServedFromNetworkForReconnect(pathname)** is now async and waits for SW acknowledgment (OPFS_REQUEST_CLEAR_SERVED_FROM_NETWORK with **requestId**; SW replies **OPFS_RESPONSE_CLEAR_SERVED_FROM_NETWORK**) so the first fetch after reconnect is not served from network. (2) Reconnect uses a **cache-bust URL** (`?opfs_reconnect=<timestamp>`) so the browser treats the resource as new and requests from the start (bytes=0-…). (3) **opfsServeRange** computes the OPFS key from the request URL **without query and hash** (origin + pathname only), so cache-busted URLs find the same file in OPFS. (4) **reconnectPlayerOnFileLoadedIntoOpfs** compares asset URL with element’s current src by **normalized** URL (ignore query/hash) so reconnect still matches after the previous load used a cache-bust param. Same behavior applies to `<audio>` (same media cache/reload issue in Edge).

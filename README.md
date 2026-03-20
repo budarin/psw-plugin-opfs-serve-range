@@ -177,9 +177,6 @@ createOpfsServeAndBackgroundFetchPlugins(options: {
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
 
@@ -193,15 +190,12 @@ createOpfsServeAndNetworkCachePlugins(options: {
   logger?: Logger;
   pinned?: string[];
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin[]
 ```
 
 The factory returns an array of plugins. **initServiceWorker** (pluggable-serviceworker) flattens the plugins array, so you can pass the result directly without spread.
 
-Each plugin requires **folderName: string** and **include: string[]** (non-empty) in its options. One folder = one cache. **include** and **exclude** can be glob patterns, pathnames, or full URLs (e.g. `['*.mp4', '/video/*']`, `['/assets/video.mp4']`, or `['https://example.com/video/*']`). At plugin init, full URLs are converted to pathnames (same-origin) or dropped (cross-origin). If after normalization `include` becomes empty (e.g. it contained only cross-origin URLs), the factory returns `undefined` and the plugin is not created. **When a request arrives:** if the request URL is cross-origin it is never processed (no serve, no cache). If same-origin, the URL’s pathname is matched against the (normalized) patterns — so a glob like `/video/*` matches a request with URL `https://example.com/video/1.mp4`. Plugins that serve or fill the same cache (e.g. opfsServeRange + opfsBackgroundFetch, or opfsServeRange + opfsRangeFromNetworkAndCache for the “cache on first request” scenario) must use the same **folderName** and consistent cache settings (rangeCacheMaxSizeBytes/rangeCacheMaxEntries when relevant); otherwise **registerFolderConfig** (called by the plugin factories) throws. Per-folder settings: **rangeCacheMaxSizeBytes** (default 5 MB), **rangeCacheMaxEntries** (default 300). To clear a cache, call **clearOpfsCache(folderName)**.
+Each plugin requires **folderName: string** and **include: string[]** (non-empty) in its options. One folder = one cache. **include** and **exclude** can be glob patterns, pathnames, or full URLs (e.g. `['*.mp4', '/video/*']`, `['/assets/video.mp4']`, or `['https://example.com/video/*']`). At plugin init, full URLs are converted to pathnames (same-origin) or dropped (cross-origin). If after normalization `include` becomes empty (e.g. it contained only cross-origin URLs), the factory returns `undefined` and the plugin is not created. **When a request arrives:** if the request URL is cross-origin it is never processed (no serve, no cache). If same-origin, the URL’s pathname is matched against the (normalized) patterns — so a glob like `/video/*` matches a request with URL `https://example.com/video/1.mp4`. Plugins that serve or fill the same cache (e.g. opfsServeRange + opfsBackgroundFetch, or opfsServeRange + opfsRangeFromNetworkAndCache for the “cache on first request” scenario) must use the same **folderName**. To clear a cache, call **clearOpfsCache(folderName)**.
 
 Storage is a **flat store**: all files live in one directory; **folderName** exists only in file metadata and is used for filtering (serve, list, clear). Cache size is limited by a **single global fraction** of origin quota (OPFS, Cache API, IndexedDB, etc. share the same quota). **getGlobalMaxCacheFraction()** (default 0.5) and **setGlobalMaxCacheFraction(fraction)** set the limit; **getMaxCacheFraction()** (no args) returns it. Do not set 1.0 if the app uses other storage.
 
@@ -216,27 +210,16 @@ getRoot(): Promise<FileSystemDirectoryHandle>
 getFlatStoreDir(): Promise<FileSystemDirectoryHandle>
 getOpfsDir(root: FileSystemDirectoryHandle, create: boolean, folderName: string): Promise<FileSystemDirectoryHandle>
 clearOpfsCache(folderName: string): Promise<void>
-registerFolderConfig(folderName: string, config?: FolderCacheConfig): void
+registerFolderConfig(folderName: string): void
 getGlobalMaxCacheFraction(): number
 setGlobalMaxCacheFraction(fraction: number): void
 getMaxCacheFraction(): number
 getCacheLimit(estimate: StorageEstimate): number
-getRangeCacheMaxSizeBytes(folderName: string): number
-getRangeCacheMaxEntries(folderName: string): number
 ```
 
 At init, full URLs are normalized to pathname; cross-origin or invalid go to `dropped`. Plugin factories emit warnings via logger. **getGlobalMaxCacheFraction** default is 0.5; **setGlobalMaxCacheFraction** expects (0, 1], throws if invalid.
 
-**FolderCacheConfig** (for `registerFolderConfig`): only range cache limits (no per-folder quota).
-
-```ts
-interface FolderCacheConfig {
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
-}
-```
-
-**opfsServeRange** — reads files from OPFS and serves requested byte ranges (206).
+**opfsServeRange** — reads files from OPFS and serves requested byte ranges (206) using a chunked stream from the file.
 
 ```ts
 opfsServeRange(options: {
@@ -247,9 +230,6 @@ opfsServeRange(options: {
   debug?: boolean;   // default: false
   logger?: Logger;
   rangeResponseCacheControl?: string;
-  rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-  rangeCacheMaxSizeBytes?: number;
-  rangeCacheMaxEntries?: number;
 }): Plugin | undefined
 ```
 

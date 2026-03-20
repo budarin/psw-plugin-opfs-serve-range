@@ -12,8 +12,6 @@ import { readMetadataFromFileFooter as readFooter } from './opfsFormat.js';
 import {
     emitDroppedPatternWarnings,
     getFlatStoreDir,
-    getRangeCacheMaxEntries,
-    getRangeCacheMaxSizeBytes,
     invalidateAllCachesAndPluginRoot,
     invalidateCachesForFileKeyOnError,
     isOpfsAvailable,
@@ -22,16 +20,13 @@ import {
     shouldProcessFile,
 } from './opfsUtil.js';
 import { urlToOpfsKey } from './opfsKey.js';
-import { getOrCreateRangeCache, getRangeCache } from './opfsRangeCache.js';
 import {
     getOrCreateMetadataCache,
     type MetadataCacheImpl,
     type OpfsMetadataCacheEntry,
 } from './opfsMetadataCache.js';
-import type { RangeSpec } from './opfsRangeUtil.js';
 import {
     parseRangeHeader,
-    build206Response,
     build206ResponseFromStream,
     createFileRangeStream,
 } from './opfsRangeUtil.js';
@@ -111,7 +106,7 @@ function startMetadataFooterInflight(
 
 export interface OpfsServeRangeOptions {
     /**
-     * Имя папки в OPFS для этого кеша (обязательно). Одна папка — один набор настроек; при повторной регистрации того же имени конфиг должен совпадать.
+     * Имя папки в OPFS для этого кеша (обязательно). Одна папка — одна регистрация в реестре.
      */
     folderName: FolderName;
     /**
@@ -139,19 +134,6 @@ export interface OpfsServeRangeOptions {
      * Cache-Control для ответов 206 (по умолчанию пустая строка — не кэшировать диапазоны в HTTP-кеше браузера).
      */
     rangeResponseCacheControl?: string;
-    /**
-     * In-memory кеш 206-ответов: true или {} — лимиты из реестра папки; объект — переопределение maxSizeBytes/maxEntries.
-     * При отсутствии или false кеш не используется.
-     */
-    rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-    /**
-     * Макс. размер in-memory кеша диапазонов (байты) для этой папки.
-     */
-    rangeCacheMaxSizeBytes?: number;
-    /**
-     * Макс. число записей in-memory кеша диапазонов для этой папки.
-     */
-    rangeCacheMaxEntries?: number;
 }
 
 /** Опции для сборки аргумента opfsServeRange из фабрик (подмножество опций пары плагинов, без pinned). */
@@ -163,9 +145,6 @@ export interface ServeOptionsFromFactory {
     logger?: Logger;
     order?: number;
     rangeResponseCacheControl?: string;
-    rangeCache?: true | { maxSizeBytes?: number; maxEntries?: number };
-    rangeCacheMaxSizeBytes?: number;
-    rangeCacheMaxEntries?: number;
 }
 
 function ifRangeMatches(
@@ -194,31 +173,6 @@ function ifRangeMatches(
     return false;
 }
 
-function build206FromBlobAndScheduleLastAccessed(
-    blob: Blob,
-    range: RangeSpec,
-    fullSize: number,
-    meta: OpfsMetadataCacheEntry,
-    rangeResponseCacheControl: string,
-    dir: FileSystemDirectoryHandle,
-    folderName: FolderName,
-    key: string,
-    event: FetchEvent
-): Response {
-    const response = build206Response(blob, range, fullSize, {
-        type: meta.type ?? MIME_APPLICATION_OCTET_STREAM,
-        ...(meta.etag && { etag: meta.etag }),
-        ...(meta.lastModified && { lastModified: meta.lastModified }),
-        ...(rangeResponseCacheControl && { cacheControl: rangeResponseCacheControl }),
-    });
-    if (meta.evictable !== false && event.waitUntil) {
-        event.waitUntil(
-            updateEvictionIndexLastAccessed(dir, folderName, key, Date.now())
-        );
-    }
-    return response;
-}
-
 /**
  * Плагин: перехватывает GET с Range и отдаёт диапазон из OPFS.
  * Один файл на URL: [тело][4 байта длина][JSON мета]. Папка задаётся опцией folderName. Очистка — clearOpfsCache(folderName).
@@ -236,9 +190,6 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
         exclude,
         logger = console,
         rangeResponseCacheControl = '',
-        rangeCache,
-        rangeCacheMaxSizeBytes,
-        rangeCacheMaxEntries,
     } = options;
     if (include == null || !Array.isArray(include) || include.length === 0) {
         throw new Error('opfs: include is required and must be a non-empty array');
@@ -256,35 +207,8 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
     };
     emitDroppedPatternWarnings(droppedForLogger, logger);
 
-    registerFolderConfig(folderName, {
-        ...(rangeCacheMaxSizeBytes !== undefined && { rangeCacheMaxSizeBytes }),
-        ...(rangeCacheMaxEntries !== undefined && { rangeCacheMaxEntries }),
-    });
-
-    const useRangeCache =
-        rangeCache === true ||
-        (typeof rangeCache === 'object' && rangeCache !== null);
-    const rangeCacheLimits: { maxSizeBytes: number; maxEntries: number } | null =
-        useRangeCache
-            ? {
-                  maxSizeBytes:
-                      typeof rangeCache === 'object' &&
-                      rangeCache?.maxSizeBytes !== undefined
-                          ? rangeCache.maxSizeBytes
-                          : getRangeCacheMaxSizeBytes(folderName),
-                  maxEntries:
-                      typeof rangeCache === 'object' &&
-                      rangeCache?.maxEntries !== undefined
-                          ? rangeCache.maxEntries
-                          : getRangeCacheMaxEntries(folderName),
-              }
-            : null;
-    if (useRangeCache && rangeCacheLimits !== null) {
-        getOrCreateRangeCache(folderName, rangeCacheLimits);
-    }
-    getOrCreateMetadataCache(folderName, {
-        onEvictKey: (key) => getRangeCache(folderName)?.invalidateForKey(key),
-    });
+    registerFolderConfig(folderName);
+    getOrCreateMetadataCache(folderName);
 
     return {
         name: 'opfs-serve-range',
@@ -348,10 +272,6 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             }
 
             const metadataCache = getOrCreateMetadataCache(folderName);
-            const rangeCache =
-                useRangeCache && rangeCacheLimits !== null
-                    ? getOrCreateRangeCache(folderName, rangeCacheLimits)
-                    : null;
             let cachedMeta = metadataCache.get(key);
             let file: File | undefined;
 
@@ -444,94 +364,6 @@ export function opfsServeRange(options: OpfsServeRangeOptions): Plugin | undefin
             try {
                 const range = parseRangeHeader(rangeHeader, size);
 
-                if (rangeCache !== null) {
-                    const cached = rangeCache.get(key, range.start, range.end);
-                    if (cached !== undefined) {
-                        const metaForResponse = metadataCache.get(key);
-                        if (metaForResponse !== undefined) {
-                            const response = build206FromBlobAndScheduleLastAccessed(
-                                cached.blob,
-                                range,
-                                metaForResponse.fullSize,
-                                metaForResponse,
-                                rangeResponseCacheControl,
-                                dir,
-                                folderName,
-                                key,
-                                event
-                            );
-                            if (debug) {
-                                logger.debug(
-                                    `${OPFS_RANGE_LOG_SW}206 from rangeCache for ${url} bytes ${range.start}-${range.end}`
-                                );
-                            }
-                            return response;
-                        }
-                        rangeCache.invalidateForKey(key);
-                    }
-                    if (file === undefined) {
-                        const fileHandle = await dir.getFileHandle(key);
-                        file = await fileHandle.getFile();
-                    }
-                    const rangeByteLength = range.end - range.start + 1;
-                    if (
-                        rangeCacheLimits !== null &&
-                        rangeByteLength > rangeCacheLimits.maxSizeBytes
-                    ) {
-                        const rangeStream = createFileRangeStream(file, range);
-                        const response = build206ResponseFromStream(
-                            rangeStream,
-                            range,
-                            size,
-                            {
-                                type,
-                                ...(meta.etag && { etag: meta.etag }),
-                                ...(meta.lastModified && {
-                                    lastModified: meta.lastModified,
-                                }),
-                                ...(rangeResponseCacheControl && {
-                                    cacheControl: rangeResponseCacheControl,
-                                }),
-                            }
-                        );
-                        if (meta.evictable !== false && event.waitUntil) {
-                            event.waitUntil(
-                                updateEvictionIndexLastAccessed(
-                                    dir,
-                                    folderName,
-                                    key,
-                                    Date.now()
-                                )
-                            );
-                        }
-                        if (debug) {
-                            logger.debug(
-                                `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end} (stream, range length ${String(rangeByteLength)} > rangeCache maxSizeBytes)`
-                            );
-                        }
-                        return response;
-                    }
-                    const blob = file.slice(range.start, range.end + 1);
-                    rangeCache.set(key, range.start, range.end, blob);
-                    const response = build206FromBlobAndScheduleLastAccessed(
-                        blob,
-                        range,
-                        size,
-                        meta,
-                        rangeResponseCacheControl,
-                        dir,
-                        folderName,
-                        key,
-                        event
-                    );
-                    if (debug) {
-                        logger.debug(
-                            `${OPFS_RANGE_LOG_SW}206 for ${url} bytes ${range.start}-${range.end} (cached)`
-                        );
-                    }
-                    return response;
-                }
-
                 if (file === undefined) {
                     const fileHandle = await dir.getFileHandle(key);
                     file = await fileHandle.getFile();
@@ -595,13 +427,6 @@ export function buildServeOptions(
         ...(options.logger !== undefined && { logger: options.logger }),
         ...(options.rangeResponseCacheControl !== undefined && {
             rangeResponseCacheControl: options.rangeResponseCacheControl,
-        }),
-        ...(options.rangeCache !== undefined && { rangeCache: options.rangeCache }),
-        ...(options.rangeCacheMaxSizeBytes !== undefined && {
-            rangeCacheMaxSizeBytes: options.rangeCacheMaxSizeBytes,
-        }),
-        ...(options.rangeCacheMaxEntries !== undefined && {
-            rangeCacheMaxEntries: options.rangeCacheMaxEntries,
         }),
     };
 }
